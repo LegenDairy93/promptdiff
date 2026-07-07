@@ -1,10 +1,22 @@
 # promptdiff: Local-first regression testing and lineage for prompts
 
-`promptdiff` is a TypeScript CLI for checking whether prompt changes made LLM outputs better or worse. It is designed to feel like Jest/Vitest snapshot testing plus Git diff, but for prompts and model outputs.
+`promptdiff` is a local-first CLI for regression testing prompts. It runs prompt test cases, validates outputs with assertions like JSON Schema, stores git-friendly run artifacts, and diffs prompt versions so teams can catch regressions before shipping.
 
 ![promptdiff CLI demo](docs/assets/demo.svg)
 
 This is an MVP portfolio project. It does not claim hosted evaluation, production observability, traction, or business impact.
+
+## Two-Minute Demo
+
+```bash
+npm install
+npm run build
+node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt baseline
+node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt candidate
+node dist/cli.js diff baseline latest
+```
+
+Expected result: the baseline fails both cases, the candidate passes both cases, and the diff shows a 0% to 100% pass-rate change with no regressions.
 
 ## Why It Exists
 
