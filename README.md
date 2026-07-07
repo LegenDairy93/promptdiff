@@ -1,10 +1,22 @@
-# promptdiff
+# promptdiff: Local-first regression testing and lineage for prompts
 
-Local-first regression testing and lineage for prompts.
+`promptdiff` is a TypeScript CLI for checking whether prompt changes made LLM outputs better or worse. It is designed to feel like Jest/Vitest snapshot testing plus Git diff, but for prompts and model outputs.
 
-`promptdiff` is a small CLI for checking whether prompt changes made LLM outputs better or worse. It is meant to feel like snapshot testing plus Git diff for prompts: configure prompts and cases, run them locally, save JSON artifacts, then compare runs.
+![promptdiff CLI demo](docs/assets/demo.svg)
 
-This is an MVP portfolio project. It does not claim hosted evaluation, production observability, or business impact.
+This is an MVP portfolio project. It does not claim hosted evaluation, production observability, traction, or business impact.
+
+## Why It Exists
+
+AI builders change prompts constantly, but prompt changes can silently break formatting, schema compliance, tone, refusal behavior, factuality, or task success. `promptdiff` keeps the first regression loop local, readable, and CI-friendly.
+
+## What Makes It Different
+
+- Local artifacts: runs are written to `.promptdiff/runs/*.json`.
+- Git-friendly review: artifacts are plain JSON, and teams can commit selected runs when useful.
+- Schema assertions early: `json_schema` is supported in the MVP, not pushed to a future hosted tier.
+- CI regression gates: `diff` exits `1` when regressions exceed `--max-regressions`.
+- No hosted backend: the mock provider works offline; network providers must be explicitly configured.
 
 ## Quickstart
 
@@ -31,6 +43,13 @@ node dist/cli.js diff baseline latest
 ```
 
 After the package is linked or installed, the same commands are available as `promptdiff`. Plain `npx promptdiff` is intended for a published package; before publication, use `npx --yes --package . promptdiff ...`.
+
+## Examples
+
+- `examples/support-bot`: refund-policy and JSON-output regression demo.
+- `examples/json-classifier`: focused JSON Schema contract demo.
+
+Each example has its own README with expected commands and output.
 
 ## Example Config
 
@@ -75,14 +94,14 @@ cases:
 ## Example Output
 
 ```text
-Run ID                       Prompt     Passed  Failed  Artifact
----------------------------  ---------  ------  ------  ----------------------------------------
-2026-07-07T12-30-00-abc123   candidate  2       0       .promptdiff/runs/2026-...-abc123.json
+Run ID                           Prompt     Passed  Failed  Artifact
+-------------------------------  ---------  ------  ------  -----------------------------------------------------
+2026-07-07T16-39-59-094Z-69b744  candidate  2       0       .promptdiff/runs/2026-07-07T16-39-59-094Z-69b744.json
 ```
 
 ```text
-Left:  2026-07-07T12-29-55-base
-Right: 2026-07-07T12-30-00-cand
+Left:  2026-07-07T16-39-55-567Z-d50bbb
+Right: 2026-07-07T16-39-59-094Z-69b744
 
 Metric       Left  Right  Delta
 -----------  ----  -----  -----
@@ -92,6 +111,22 @@ Regressions        0
 Newly passing: json-output, refund-policy
 Newly failing:  none
 ```
+
+## Commands
+
+```bash
+promptdiff init
+promptdiff run --config promptdiff.config.yml --prompt candidate
+promptdiff list
+promptdiff show latest
+promptdiff diff previous latest --max-regressions 0
+```
+
+Exit codes:
+
+- `0` when a command succeeds and regressions are within the configured threshold.
+- `1` when `diff` finds more regressions than `--max-regressions` allows.
+- `2` for config or runtime errors.
 
 ## How Artifacts Work
 
@@ -118,12 +153,6 @@ Every `run` writes a JSON artifact to `.promptdiff/runs/<run-id>.json`. The arti
 - a prompt label such as `baseline` or `candidate`
 
 The diff reports pass-rate change, newly passing cases, newly failing cases, assertion-level changes, and short examples of output changes.
-
-Exit codes:
-
-- `0` when regressions are within the configured threshold
-- `1` when regressions exceed `--max-regressions`
-- `2` for config or runtime errors
 
 ## Assertion Types
 
@@ -179,16 +208,23 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm run build
+      - run: npm test
       - run: node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt baseline
       - run: node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt candidate
       - run: node dist/cli.js diff baseline latest --max-regressions 0
 ```
+
+The repository includes `.github/workflows/ci.yml` with build, test, and example smoke-test coverage.
 
 ## Security And Privacy
 
 `promptdiff` is local-first. Prompts, inputs, and outputs stay on your machine unless you explicitly configure a network provider such as `openai`. Do not put API keys in config files. Use environment variables such as `OPENAI_API_KEY`.
 
 Run artifacts may contain sensitive inputs and outputs. Keep `.promptdiff/` ignored unless you intentionally want to review or share selected artifacts.
+
+## Package Readiness
+
+The public npm registry returned `E404` for `promptdiff` on 2026-07-07, with an `Unpublished on 2026-04-22T07:57:12.207Z` note. Re-check while authenticated immediately before publishing; do not treat this README as a permanent name reservation.
 
 ## Current Limitations
 

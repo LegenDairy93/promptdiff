@@ -9,6 +9,9 @@
   "files": [
     "dist",
     "README.md",
+    "LICENSE",
+    "CONTRIBUTING.md",
+    "docs",
     "examples"
   ],
   "scripts": {
@@ -17,10 +20,14 @@
   },
   "keywords": [
     "prompts",
-    "testing",
+    "prompt-testing",
     "llm",
+    "testing",
     "cli",
-    "regression"
+    "regression",
+    "json-schema",
+    "local-first",
+    "ci"
   ],
   "license": "MIT",
   "dependencies": {
@@ -33,5 +40,8 @@
     "@types/node": "^22.5.4",
     "typescript": "^5.5.4",
     "vitest": "^2.0.5"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

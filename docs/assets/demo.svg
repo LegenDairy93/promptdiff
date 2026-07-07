@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="610" viewBox="0 0 1100 610" role="img" aria-labelledby="title desc">
+  <title id="title">promptdiff CLI demo</title>
+  <desc id="desc">Terminal-style screenshot showing run, diff, and regression gate output.</desc>
+  <rect width="1100" height="610" rx="14" fill="#101418"/>
+  <rect x="0" y="0" width="1100" height="44" rx="14" fill="#1b232c"/>
+  <circle cx="28" cy="22" r="7" fill="#ff5f56"/>
+  <circle cx="52" cy="22" r="7" fill="#ffbd2e"/>
+  <circle cx="76" cy="22" r="7" fill="#27c93f"/>
+  <text x="24" y="78" font-family="Consolas, Menlo, monospace" font-size="18" fill="#8be9fd">$ node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt baseline</text>
+  <text x="24" y="112" font-family="Consolas, Menlo, monospace" font-size="17" fill="#f8f8f2">Run ID                           Prompt    Passed  Failed</text>
+  <text x="24" y="140" font-family="Consolas, Menlo, monospace" font-size="17" fill="#f8f8f2">2026-07-07T16-39-55-d50bbb      baseline  0       2</text>
+  <text x="24" y="185" font-family="Consolas, Menlo, monospace" font-size="18" fill="#8be9fd">$ node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt candidate</text>
+  <text x="24" y="219" font-family="Consolas, Menlo, monospace" font-size="17" fill="#f8f8f2">Run ID                           Prompt     Passed  Failed</text>
+  <text x="24" y="247" font-family="Consolas, Menlo, monospace" font-size="17" fill="#f8f8f2">2026-07-07T16-39-59-69b744      candidate  2       0</text>
+  <text x="24" y="292" font-family="Consolas, Menlo, monospace" font-size="18" fill="#8be9fd">$ node dist/cli.js diff baseline latest</text>
+  <text x="24" y="326" font-family="Consolas, Menlo, monospace" font-size="17" fill="#f8f8f2">Pass rate    0%    100%   +100%</text>
+  <text x="24" y="354" font-family="Consolas, Menlo, monospace" font-size="17" fill="#50fa7b">Newly passing: json-output, refund-policy</text>
+  <text x="24" y="382" font-family="Consolas, Menlo, monospace" font-size="17" fill="#f8f8f2">Newly failing:  none</text>
+  <text x="24" y="427" font-family="Consolas, Menlo, monospace" font-size="18" fill="#8be9fd">$ node dist/cli.js diff latest baseline</text>
+  <text x="24" y="461" font-family="Consolas, Menlo, monospace" font-size="17" fill="#f8f8f2">Pass rate    100%  0%     -100%</text>
+  <text x="24" y="489" font-family="Consolas, Menlo, monospace" font-size="17" fill="#ff6e6e">Regressions        2</text>
+  <text x="24" y="517" font-family="Consolas, Menlo, monospace" font-size="17" fill="#ff6e6e">Newly failing:  json-output, refund-policy</text>
+  <text x="24" y="562" font-family="Consolas, Menlo, monospace" font-size="18" fill="#f1fa8c">CI gate: exit 1 when regressions exceed --max-regressions</text>
+</svg>

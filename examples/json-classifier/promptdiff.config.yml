@@ -1,0 +1,27 @@
+project: json-classifier-schema-regression
+
+prompts:
+  baseline: prompts/classifier-v1.md
+  candidate: prompts/classifier-v2.md
+
+provider:
+  type: mock
+  model: mock-v1
+  temperature: 0
+
+cases:
+  - id: billing-ticket
+    input: "Classify this ticket: I was charged twice."
+    assertions:
+      - type: json_schema
+        schema:
+          type: object
+          required: ["category", "priority"]
+          additionalProperties: false
+          properties:
+            category:
+              type: string
+              enum: ["billing", "account", "technical", "refund"]
+            priority:
+              type: string
+              enum: ["low", "medium", "high"]

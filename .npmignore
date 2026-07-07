@@ -1,0 +1,9 @@
+src/
+tests/
+.github/
+.promptdiff/
+node_modules/
+dist/**/*.map
+vitest.config.ts
+tsconfig.json
+*.log

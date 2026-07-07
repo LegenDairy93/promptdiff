@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "required": ["category", "priority"],
+  "additionalProperties": false,
+  "properties": {
+    "category": {
+      "type": "string",
+      "enum": ["billing", "account", "technical", "refund"]
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    }
+  }
+}
