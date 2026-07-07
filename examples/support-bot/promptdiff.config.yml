@@ -1,0 +1,35 @@
+project: support-bot-prompt-regression
+
+prompts:
+  baseline: prompts/support-v1.md
+  candidate: prompts/support-v2.md
+
+provider:
+  type: mock
+  model: mock-v1
+  temperature: 0
+
+cases:
+  - id: refund-policy
+    input: "Can I get a refund after 40 days?"
+    assertions:
+      - type: contains
+        value: "refund"
+      - type: not_contains
+        value: "guaranteed"
+      - type: max_length
+        value: 1200
+
+  - id: json-output
+    input: "Classify this ticket: I was charged twice."
+    assertions:
+      - type: json_schema
+        schema:
+          type: object
+          required: ["category", "priority"]
+          properties:
+            category:
+              type: string
+            priority:
+              type: string
+              enum: ["low", "medium", "high"]
