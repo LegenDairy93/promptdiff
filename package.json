@@ -1,7 +1,7 @@
 {
   "name": "promptdiff",
   "version": "0.1.0",
-  "description": "Local-first regression testing and lineage for prompts.",
+  "description": "Behavioral diffs and regression gates for prompts and agents.",
   "type": "module",
   "bin": {
     "promptdiff": "./dist/cli.js"

@@ -6,6 +6,9 @@ export type { Provider, PromptRunInput, PromptRunOutput } from "./providers/Prov
 export { runSuite } from "./runner/runSuite.js";
 export { writeRun } from "./artifacts/writeRun.js";
 export { readRun, resolveRun } from "./artifacts/readRun.js";
-export type { RunArtifact } from "./artifacts/types.js";
+export { getArtifactTarget } from "./artifacts/types.js";
+export type { RunArtifact, AgentTraceStep, ArtifactTarget } from "./artifacts/types.js";
 export { diffRuns } from "./diff/diffRuns.js";
 export { formatDiff } from "./diff/formatDiff.js";
+export { formatReport } from "./diff/formatReport.js";
+export type { ReportOptions } from "./diff/formatReport.js";

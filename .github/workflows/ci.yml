@@ -34,6 +34,13 @@ jobs:
           node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt candidate
           node dist/cli.js diff baseline latest
 
+      - name: Smoke test prompt-to-agent diff
+        run: |
+          node dist/cli.js run --config examples/prompt-to-agent/promptdiff.config.yml --target prompt-baseline
+          node dist/cli.js run --config examples/prompt-to-agent/promptdiff.config.yml --target agent-candidate
+          node dist/cli.js diff prompt-baseline agent-candidate
+          node dist/cli.js report prompt-baseline agent-candidate --output promptdiff-report.html
+
       - name: Smoke test json-classifier example
         run: |
           node dist/cli.js run --config examples/json-classifier/promptdiff.config.yml --prompt baseline

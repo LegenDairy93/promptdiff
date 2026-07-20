@@ -28,6 +28,32 @@ cases:
     expect(loaded.config.cases).toHaveLength(1);
   });
 
+  it("loads explicit prompt and agent targets as different kinds", async () => {
+    const dir = await makeTempDir();
+    const configPath = path.join(dir, "promptdiff.config.yml");
+    await writeFile(configPath, `project: demo
+targets:
+  simple:
+    kind: prompt
+    file: prompt.md
+  workflow:
+    kind: agent
+    command: [node, agent.mjs]
+    tools: [search]
+cases:
+  - id: one
+    input: hello
+    assertions:
+      - type: contains
+        value: hello
+`, "utf8");
+
+    const loaded = await loadConfig(configPath);
+
+    expect(loaded.config.targets?.simple.kind).toBe("prompt");
+    expect(loaded.config.targets?.workflow).toMatchObject({ kind: "agent", tools: ["search"] });
+  });
+
   it("rejects configs without cases", async () => {
     const dir = await makeTempDir();
     const configPath = path.join(dir, "promptdiff.config.yml");

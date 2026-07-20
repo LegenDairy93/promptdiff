@@ -1,257 +1,135 @@
-# promptdiff: Local-first regression testing and lineage for prompts
+# promptdiff
 
-`promptdiff` is a local-first CLI for regression testing prompts. It runs prompt test cases, validates outputs with assertions like JSON Schema, stores git-friendly run artifacts, and diffs prompt versions so teams can catch regressions before shipping.
+[![CI](https://github.com/LegenDairy93/promptdiff/actions/workflows/ci.yml/badge.svg)](https://github.com/LegenDairy93/promptdiff/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)](package.json)
 
-![promptdiff CLI demo](docs/assets/demo.svg)
+**Behavioral diffs for prompts and agents.**
 
-This is an MVP portfolio project. It does not claim hosted evaluation, production observability, traction, or business impact.
+A prompt is one model call. An agent is a program that can reason, call tools, and take several steps. Most eval output makes both look like a final string. `promptdiff` keeps the difference visible and reviews the change:
 
-## Two-Minute Demo
+![Prompt output compared with an agent trace](docs/assets/prompt-vs-agent.svg)
+
+```text
+prompt · baseline                 →  agent · candidate
+one model response                  1. model  decide to look up policy
+                                    2. tool   lookup_refund_policy
+                                    3. model  apply policy to the request
+                                    4. final  explain the next safe action
+```
+
+The question is not only **“did the candidate pass?”** It is **“what changed in the system's behavior, tools, trace, and outcome—and is that change safe to merge?”**
+
+## PromptDiff vs Promptfoo
+
+[Promptfoo](https://github.com/promptfoo/promptfoo) is a broad LLM evaluation and red-teaming platform. It tests prompts, models, RAG systems, and agents across many providers, assertions, and security probes. If you need a full evaluation or red-team platform, use Promptfoo.
+
+PromptDiff is a deliberately focused change-review tool:
+
+| | PromptDiff | Promptfoo |
+|---|---|---|
+| Primary workflow | Review two behavioral snapshots | Run evaluation matrices and red-team scans |
+| Main unit | A before/after change | A target × prompt × test matrix |
+| Prompt representation | One-shot source, model settings, output | Prompt/provider under evaluation |
+| Agent representation | Executable target, declared tools, ordered trace, final output | Custom target or provider under evaluation |
+| Review artifact | Small local JSON plus a self-contained before/after HTML report | Evaluation results, dashboards, and exports |
+| Intended use | Explain and gate a specific change in a PR | Measure quality, compare providers, and probe security |
+
+This is workflow differentiation, not a claim that Promptfoo cannot test agents or detect regressions. PromptDiff chooses a narrower job: make a behavioral change legible in code review.
+
+## See It in Two Minutes
 
 ```bash
 npm install
 npm run build
-node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt baseline
-node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt candidate
-node dist/cli.js diff baseline latest
+node dist/cli.js run -c examples/prompt-to-agent/promptdiff.config.yml -t prompt-baseline
+node dist/cli.js run -c examples/prompt-to-agent/promptdiff.config.yml -t agent-candidate
+node dist/cli.js diff prompt-baseline agent-candidate
+node dist/cli.js report prompt-baseline agent-candidate -o promptdiff-report.html
 ```
 
-Expected result: the baseline fails both cases, the candidate passes both cases, and the diff shows a 0% to 100% pass-rate change with no regressions.
+The demo is deterministic and offline. The agent is a real local command target; it reads a case as JSON and returns a final output plus an ordered trace.
 
-## Why It Exists
-
-AI builders change prompts constantly, but prompt changes can silently break formatting, schema compliance, tone, refusal behavior, factuality, or task success. `promptdiff` keeps the first regression loop local, readable, and CI-friendly.
-
-## What Makes It Different
-
-- Local artifacts: runs are written to `.promptdiff/runs/*.json`.
-- Git-friendly review: artifacts are plain JSON, and teams can commit selected runs when useful.
-- Schema assertions early: `json_schema` is supported in the MVP, not pushed to a future hosted tier.
-- CI regression gates: `diff` exits `1` when regressions exceed `--max-regressions`.
-- No hosted backend: the mock provider works offline; network providers must be explicitly configured.
-
-## Quickstart
-
-```bash
-npm install
-npm test
-npm run build
-node dist/cli.js init
-node dist/cli.js run --config examples/support-bot/promptdiff.config.yml
-```
-
-From an unpublished source checkout, the npx-style local package form is:
-
-```bash
-npx --yes --package . promptdiff run --config examples/support-bot/promptdiff.config.yml
-```
-
-To compare baseline and candidate prompts:
-
-```bash
-node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt baseline
-node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt candidate
-node dist/cli.js diff baseline latest
-```
-
-After the package is linked or installed, the same commands are available as `promptdiff`. Plain `npx promptdiff` is intended for a published package; before publication, use `npx --yes --package . promptdiff ...`.
-
-## Examples
-
-- `examples/support-bot`: refund-policy and JSON-output regression demo.
-- `examples/json-classifier`: focused JSON Schema contract demo.
-
-Each example has its own README with expected commands and output.
-
-## Example Config
+## Prompt and Agent Are Different Types
 
 ```yaml
-project: support-bot-prompt-regression
+targets:
+  prompt-baseline:
+    kind: prompt
+    file: prompt.md
 
-prompts:
-  baseline: prompts/support-v1.md
-  candidate: prompts/support-v2.md
-
-provider:
-  type: mock
-  model: mock-v1
-  temperature: 0
-
-cases:
-  - id: refund-policy
-    input: "Can I get a refund after 40 days?"
-    assertions:
-      - type: contains
-        value: "refund"
-      - type: not_contains
-        value: "guaranteed"
-      - type: max_length
-        value: 1200
-
-  - id: json-output
-    input: "Classify this ticket: I was charged twice."
-    assertions:
-      - type: json_schema
-        schema:
-          type: object
-          required: ["category", "priority"]
-          properties:
-            category:
-              type: string
-            priority:
-              type: string
-              enum: ["low", "medium", "high"]
+  agent-candidate:
+    kind: agent
+    command: [node, agent.mjs]
+    instructions: agent.md
+    tools: [lookup_refund_policy]
 ```
 
-## Example Output
+A `prompt` target runs through the configured model provider and records prompt identity, model settings, output, assertions, and usage.
 
-```text
-Run ID                           Prompt     Passed  Failed  Artifact
--------------------------------  ---------  ------  ------  -----------------------------------------------------
-2026-07-07T16-39-59-094Z-69b744  candidate  2       0       .promptdiff/runs/2026-07-07T16-39-59-094Z-69b744.json
-```
+An `agent` target runs your local executable and records its command, instruction identity, declared tools, ordered model/tool/final trace, output, assertions, and usage. Agent commands use a small framework-neutral JSON protocol documented in [docs/agent-protocol.md](docs/agent-protocol.md).
 
-```text
-Left:  2026-07-07T16-39-55-567Z-d50bbb
-Right: 2026-07-07T16-39-59-094Z-69b744
+Legacy `prompts:` configs continue to work and are normalized to `kind: prompt`.
 
-Metric       Left  Right  Delta
------------  ----  -----  -----
-Pass rate    0%    100%   +100%
-Regressions        0
+## What a Diff Shows
 
-Newly passing: json-output, refund-policy
-Newly failing:  none
-```
+- target kind: prompt or agent
+- source/instruction identity and SHA-256 hash
+- model/provider or local command runtime
+- declared agent tools
+- pass-rate and assertion changes
+- newly passing and newly failing cases
+- output changes
+- side-by-side agent traces in the HTML report
+- a CI verdict based on allowed regressions
+
+Artifacts are written to `.promptdiff/runs/*.json`. They stay local and are ignored by default because prompts, inputs, outputs, and traces may contain sensitive data.
 
 ## Commands
 
 ```bash
 promptdiff init
-promptdiff run --config promptdiff.config.yml --prompt candidate
+promptdiff run --config promptdiff.config.yml --target candidate
 promptdiff list
 promptdiff show latest
 promptdiff diff previous latest --max-regressions 0
+promptdiff report previous latest --output promptdiff-report.html
 ```
+
+`--prompt` remains as a deprecated alias for `--target`.
 
 Exit codes:
 
-- `0` when a command succeeds and regressions are within the configured threshold.
-- `1` when `diff` finds more regressions than `--max-regressions` allows.
-- `2` for config or runtime errors.
+- `0`: command succeeded and the regression threshold was not exceeded
+- `1`: `diff` found more regressions than `--max-regressions` allows
+- `2`: configuration or runtime error
 
-## How Artifacts Work
+## Assertions
 
-Every `run` writes a JSON artifact to `.promptdiff/runs/<run-id>.json`. The artifact includes:
+The MVP supports `contains`, `not_contains`, `regex`, `json_schema`, and `max_length`. String assertions are case-insensitive by default.
 
-- project name
-- prompt label, path, and SHA-256 hash
-- provider type, model, and temperature
-- case inputs
-- provider outputs
-- assertion results
-- timestamp and run ID
-
-`.promptdiff/` is ignored by default because outputs may contain private prompt or user data. Teams can choose to commit selected artifacts when they want reproducible review history.
-
-## How Diffing Works
-
-`promptdiff diff <left> <right>` compares two run artifacts. Each reference can be:
-
-- a run ID
-- a JSON artifact path
-- `latest`
-- `previous`
-- a prompt label such as `baseline` or `candidate`
-
-The diff reports pass-rate change, newly passing cases, newly failing cases, assertion-level changes, and short examples of output changes.
-
-## Assertion Types
-
-Supported in the MVP:
-
-- `contains`
-- `not_contains`
-- `regex`
-- `json_schema`
-- `max_length`
-
-String assertions are case-insensitive by default. Set `case_sensitive: true` on `contains` or `not_contains` when exact casing matters.
-
-## Provider Model
-
-The provider interface is intentionally small:
-
-```ts
-type PromptRunInput = {
-  prompt: string;
-  input: string;
-  variables?: Record<string, string>;
-  model?: string;
-  temperature?: number;
-};
-
-type PromptRunOutput = {
-  text: string;
-  raw?: unknown;
-  usage?: {
-    inputTokens?: number;
-    outputTokens?: number;
-    costUsd?: number;
-  };
-};
-```
-
-The `mock` provider is deterministic and works offline. An isolated `openai` provider exists for explicit use with `OPENAI_API_KEY`; API keys are never written to artifacts.
-
-## CI Example
+## CI
 
 ```yaml
-name: promptdiff
-on: [pull_request]
-
-jobs:
-  promptdiff:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm ci
-      - run: npm run build
-      - run: npm test
-      - run: node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt baseline
-      - run: node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt candidate
-      - run: node dist/cli.js diff baseline latest --max-regressions 0
+- run: npm ci
+- run: npm run build
+- run: npm test
+- run: node dist/cli.js run -c examples/prompt-to-agent/promptdiff.config.yml -t prompt-baseline
+- run: node dist/cli.js run -c examples/prompt-to-agent/promptdiff.config.yml -t agent-candidate
+- run: node dist/cli.js diff prompt-baseline agent-candidate --max-regressions 0
 ```
 
-The repository includes `.github/workflows/ci.yml` with build, test, and example smoke-test coverage.
+## Scope
 
-## Security And Privacy
+This repository is an early open-source MVP. It has no hosted service, database, authentication, semantic judge, or production observability. The mock provider and example agent are deterministic fixtures for understanding the review workflow, not substitutes for model-quality evaluation.
 
-`promptdiff` is local-first. Prompts, inputs, and outputs stay on your machine unless you explicitly configure a network provider such as `openai`. Do not put API keys in config files. Use environment variables such as `OPENAI_API_KEY`.
+The roadmap follows the change-review thesis: trace-level diffs, tool-call assertions, baseline pinning, GitHub PR annotations, and adapters for common agent runtimes.
 
-Run artifacts may contain sensitive inputs and outputs. Keep `.promptdiff/` ignored unless you intentionally want to review or share selected artifacts.
+## Development
 
-## Package Readiness
+```bash
+npm test
+npm run build
+```
 
-The public npm registry returned `E404` for `promptdiff` on 2026-07-07, with an `Unpublished on 2026-04-22T07:57:12.207Z` note. Re-check while authenticated immediately before publishing; do not treat this README as a permanent name reservation.
-
-## Current Limitations
-
-- No hosted dashboard.
-- No database or auth.
-- No semantic judge yet.
-- No streaming support.
-- JSON Schema assertions validate only direct JSON output text.
-- The mock provider is for deterministic demos and tests, not a model-quality substitute.
-
-## Roadmap
-
-- LLM judge assertions with clear provenance.
-- Better output diff views.
-- Baseline pinning and named artifact sets.
-- Provider-specific cost tracking.
-- GitHub Actions examples with artifact upload.
-- Optional HTML report generated from local artifacts.
+Node.js 20 or newer is required. See [CONTRIBUTING.md](CONTRIBUTING.md) and [LICENSE](LICENSE).

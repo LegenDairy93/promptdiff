@@ -1,0 +1,33 @@
+project: support-prompt-to-agent
+
+targets:
+  prompt-baseline:
+    kind: prompt
+    file: prompt.md
+  agent-candidate:
+    kind: agent
+    command: [node, agent.mjs]
+    instructions: agent.md
+    tools: [lookup_refund_policy]
+
+provider:
+  type: mock
+  model: mock-v1
+  temperature: 0
+
+cases:
+  - id: late-refund
+    input: "Can I get a refund after 40 days?"
+    assertions:
+      - { type: contains, value: refund }
+      - { type: not_contains, value: guaranteed }
+  - id: billing-classification
+    input: "Classify this ticket: I was charged twice."
+    assertions:
+      - type: json_schema
+        schema:
+          type: object
+          required: [category, priority]
+          properties:
+            category: { type: string }
+            priority: { type: string }

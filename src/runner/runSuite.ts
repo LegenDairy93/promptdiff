@@ -2,102 +2,66 @@ import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { evaluateAssertion } from "../assertions/evaluateAssertion.js";
-import type { LoadedConfig } from "../config/schema.js";
+import type { LoadedConfig, TargetConfig } from "../config/schema.js";
 import { sha256 } from "../artifacts/hash.js";
 import type { RunArtifact } from "../artifacts/types.js";
 import { writeRun, type WriteRunResult } from "../artifacts/writeRun.js";
 import { createProvider } from "../providers/createProvider.js";
+import { runAgentCommand } from "./runAgent.js";
 import { renderPrompt } from "./renderPrompt.js";
 
-export type RunSuiteOptions = {
-  promptLabel?: string;
-  artifactRoot?: string;
-};
+export type RunSuiteOptions = { targetLabel?: string; promptLabel?: string; artifactRoot?: string };
+type ResolvedTarget = { label: string; config: TargetConfig };
 
 export async function runSuite(loadedConfig: LoadedConfig, options: RunSuiteOptions = {}): Promise<WriteRunResult> {
   const { config } = loadedConfig;
-  const promptLabel = options.promptLabel ?? chooseDefaultPrompt(Object.keys(config.prompts));
-  const promptConfigPath = config.prompts[promptLabel];
+  const targets = normalizedTargets(loadedConfig);
+  const targetLabel = options.targetLabel ?? options.promptLabel ?? chooseDefaultTarget(Object.keys(targets));
+  const targetConfig = targets[targetLabel];
+  if (!targetConfig) throw new Error(`Target "${targetLabel}" is not configured. Available targets: ${Object.keys(targets).join(", ")}`);
 
-  if (!promptConfigPath) {
-    throw new Error(`Prompt "${promptLabel}" is not configured. Available prompts: ${Object.keys(config.prompts).join(", ")}`);
-  }
-
-  const promptPath = path.resolve(loadedConfig.rootDir, promptConfigPath);
-  const prompt = await readFile(promptPath, "utf8");
-  const provider = createProvider(config.provider);
-  const cases = [];
+  const resolved: ResolvedTarget = { label: targetLabel, config: targetConfig };
+  const provider = targetConfig.kind === "prompt" ? createProvider(config.provider) : undefined;
+  const promptPath = targetConfig.kind === "prompt" ? path.resolve(loadedConfig.rootDir, targetConfig.file) : undefined;
+  const instructionsPath = targetConfig.kind === "agent" && targetConfig.instructions ? path.resolve(loadedConfig.rootDir, targetConfig.instructions) : undefined;
+  const instructions = instructionsPath ? await readFile(instructionsPath, "utf8") : undefined;
+  const prompt = promptPath ? await readFile(promptPath, "utf8") : undefined;
+  const cases: RunArtifact["cases"] = [];
 
   for (const testCase of config.cases) {
-    const renderedPrompt = renderPrompt(prompt, testCase);
-    const output = await provider.run({
-      prompt: renderedPrompt,
-      input: testCase.input,
-      variables: testCase.variables,
-      model: config.provider.model,
-      temperature: config.provider.temperature
-    });
-    const assertions = testCase.assertions.map((assertion) => evaluateAssertion(assertion, output.text));
-    const passed = assertions.every((assertion) => assertion.passed);
-
-    cases.push({
-      id: testCase.id,
-      input: testCase.input,
-      output: output.text,
-      passed,
-      assertions,
-      usage: output.usage
-    });
+    const result = resolved.config.kind === "prompt"
+      ? await provider!.run({ prompt: renderPrompt(prompt!, testCase), input: testCase.input, variables: testCase.variables, model: config.provider.model, temperature: config.provider.temperature })
+      : await runAgentCommand({ command: resolved.config.command, cwd: loadedConfig.rootDir, timeoutMs: resolved.config.timeout_ms, label: resolved.label, instructions, tools: resolved.config.tools, testCase });
+    const output = "text" in result ? result.text : result.output;
+    const assertions = testCase.assertions.map((assertion) => evaluateAssertion(assertion, output));
+    cases.push({ id: testCase.id, input: testCase.input, output, passed: assertions.every((a) => a.passed), assertions, usage: result.usage, trace: "trace" in result ? result.trace : undefined });
   }
 
   const passed = cases.filter((testCase) => testCase.passed).length;
+  const identity = targetConfig.kind === "prompt" ? prompt! : JSON.stringify({ instructions: instructions ?? null, tools: targetConfig.tools, command: targetConfig.command });
   const artifact: RunArtifact = {
-    runId: createRunId(),
-    project: config.project,
-    createdAt: new Date().toISOString(),
-    provider: {
-      type: config.provider.type,
-      model: config.provider.model,
-      temperature: config.provider.temperature
+    runId: createRunId(), project: config.project, createdAt: new Date().toISOString(),
+    provider: targetConfig.kind === "prompt" ? { type: config.provider.type, model: config.provider.model, temperature: config.provider.temperature } : { type: "command" },
+    target: {
+      kind: targetConfig.kind, label: targetLabel,
+      path: toPortablePath(path.relative(options.artifactRoot ?? process.cwd(), (promptPath ?? instructionsPath) || loadedConfig.path)),
+      sha256: sha256(identity),
+      tools: targetConfig.kind === "agent" ? targetConfig.tools : undefined,
+      command: targetConfig.kind === "agent" ? targetConfig.command : undefined
     },
-    prompt: {
-      label: promptLabel,
-      path: toPortablePath(path.relative(options.artifactRoot ?? process.cwd(), promptPath)),
-      sha256: sha256(prompt)
-    },
-    summary: {
-      total: cases.length,
-      passed,
-      failed: cases.length - passed
-    },
-    cases
+    summary: { total: cases.length, passed, failed: cases.length - passed }, cases
   };
-
   return writeRun(artifact, options.artifactRoot);
 }
 
-function chooseDefaultPrompt(labels: string[]): string {
-  if (labels.includes("candidate")) {
-    return "candidate";
-  }
-
-  if (labels.includes("baseline")) {
-    return "baseline";
-  }
-
-  const [first] = labels;
-  if (!first) {
-    throw new Error("No prompts configured");
-  }
-  return first;
+function normalizedTargets(loaded: LoadedConfig): Record<string, TargetConfig> {
+  if (loaded.config.targets) return loaded.config.targets;
+  return Object.fromEntries(Object.entries(loaded.config.prompts ?? {}).map(([label, file]) => [label, { kind: "prompt", file }]));
 }
-
-function createRunId(): string {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const suffix = randomBytes(3).toString("hex");
-  return `${timestamp}-${suffix}`;
+function chooseDefaultTarget(labels: string[]): string {
+  for (const preferred of ["candidate", "agent", "baseline"]) if (labels.includes(preferred)) return preferred;
+  if (!labels[0]) throw new Error("No targets configured");
+  return labels[0];
 }
-
-function toPortablePath(filePath: string): string {
-  return filePath.split(path.sep).join("/");
-}
+function createRunId(): string { return `${new Date().toISOString().replace(/[:.]/g, "-")}-${randomBytes(3).toString("hex")}`; }
+function toPortablePath(filePath: string): string { return filePath.split(path.sep).join("/"); }

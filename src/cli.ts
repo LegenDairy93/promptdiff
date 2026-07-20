@@ -4,9 +4,11 @@ import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Command } from "commander";
 import { listRuns, resolveRun } from "./artifacts/readRun.js";
+import { getArtifactTarget } from "./artifacts/types.js";
 import { loadConfig, ConfigError } from "./config/loadConfig.js";
 import { diffRuns } from "./diff/diffRuns.js";
 import { formatDiff } from "./diff/formatDiff.js";
+import { formatReport } from "./diff/formatReport.js";
 import { formatTable } from "./output/table.js";
 import { runSuite } from "./runner/runSuite.js";
 
@@ -14,7 +16,7 @@ const program = new Command();
 
 program
   .name("promptdiff")
-  .description("Local-first regression testing and lineage for prompts.")
+  .description("Review behavioral changes in prompts and agents.")
   .version("0.1.0");
 
 program
@@ -30,19 +32,22 @@ program
 
 program
   .command("run")
-  .description("Run configured cases against a prompt and write a local artifact")
+  .description("Run cases against a prompt or agent target and write a local artifact")
   .option("-c, --config <path>", "config file path", "promptdiff.config.yml")
-  .option("-p, --prompt <label>", "prompt label to run")
+  .option("-t, --target <label>", "prompt or agent target to run")
+  .option("-p, --prompt <label>", "deprecated alias for --target")
   .option("--fail-on-failed-cases", "exit 1 when any case fails")
-  .action(async (options: { config: string; prompt?: string; failOnFailedCases?: boolean }) => {
+  .action(async (options: { config: string; target?: string; prompt?: string; failOnFailedCases?: boolean }) => {
     await withCliErrors(async () => {
       const loaded = await loadConfig(options.config);
-      const result = await runSuite(loaded, { promptLabel: options.prompt });
+      const result = await runSuite(loaded, { targetLabel: options.target ?? options.prompt });
+      const target = getArtifactTarget(result.artifact);
       const rows = [
-        ["Run ID", "Prompt", "Passed", "Failed", "Artifact"],
+        ["Run ID", "Kind", "Target", "Passed", "Failed", "Artifact"],
         [
           result.artifact.runId,
-          result.artifact.prompt.label,
+          target.kind,
+          target.label,
           String(result.artifact.summary.passed),
           String(result.artifact.summary.failed),
           path.relative(process.cwd(), result.path)
@@ -59,8 +64,8 @@ program
 program
   .command("diff")
   .description("Compare two run artifacts")
-  .argument("<left>", "left run ID, file path, prompt label, latest, or previous")
-  .argument("<right>", "right run ID, file path, prompt label, latest, or previous")
+  .argument("<left>", "left run ID, file path, target label, latest, or previous")
+  .argument("<right>", "right run ID, file path, target label, latest, or previous")
   .option("--max-regressions <count>", "allowed regression count before exit 1", parseInteger, 0)
   .action(async (leftRef: string, rightRef: string, options: { maxRegressions: number }) => {
     await withCliErrors(async () => {
@@ -76,6 +81,27 @@ program
   });
 
 program
+  .command("report")
+  .description("Write a self-contained HTML diff report from two run artifacts")
+  .argument("<left>", "left run ID, file path, target label, latest, or previous")
+  .argument("<right>", "right run ID, file path, target label, latest, or previous")
+  .option("-o, --output <path>", "output HTML file path", "promptdiff-report.html")
+  .option("--max-regressions <count>", "allowed regression count before the report reads Blocked", parseInteger, 0)
+  .action(async (leftRef: string, rightRef: string, options: { output: string; maxRegressions: number }) => {
+    await withCliErrors(async () => {
+      const left = await resolveRun(leftRef);
+      const right = await resolveRun(rightRef);
+      const diff = diffRuns(left.artifact, right.artifact);
+      const html = formatReport(diff, left.artifact, right.artifact, {
+        maxRegressions: options.maxRegressions
+      });
+
+      await writeFile(options.output, html, "utf8");
+      console.log(`Wrote report to ${path.relative(process.cwd(), path.resolve(options.output))}`);
+    });
+  });
+
+program
   .command("list")
   .description("List local run artifacts")
   .action(async () => {
@@ -87,12 +113,13 @@ program
       }
 
       console.log(formatTable([
-        ["Run ID", "Created", "Project", "Prompt", "Passed", "Failed"],
+        ["Run ID", "Created", "Project", "Kind", "Target", "Passed", "Failed"],
         ...runs.map((run) => [
           run.artifact.runId,
           run.artifact.createdAt,
           run.artifact.project,
-          run.artifact.prompt.label,
+          getArtifactTarget(run.artifact).kind,
+          getArtifactTarget(run.artifact).label,
           String(run.artifact.summary.passed),
           String(run.artifact.summary.failed)
         ])
@@ -103,7 +130,7 @@ program
 program
   .command("show")
   .description("Show a run artifact summary")
-  .argument("<run>", "run ID, file path, prompt label, latest, or previous")
+  .argument("<run>", "run ID, file path, target label, latest, or previous")
   .option("--json", "print the raw JSON artifact")
   .action(async (runRef: string, options: { json?: boolean }) => {
     await withCliErrors(async () => {
@@ -114,11 +141,12 @@ program
       }
 
       console.log(formatTable([
-        ["Run ID", "Project", "Prompt", "Passed", "Failed"],
+        ["Run ID", "Project", "Kind", "Target", "Passed", "Failed"],
         [
           run.artifact.runId,
           run.artifact.project,
-          run.artifact.prompt.label,
+          getArtifactTarget(run.artifact).kind,
+          getArtifactTarget(run.artifact).label,
           String(run.artifact.summary.passed),
           String(run.artifact.summary.failed)
         ]
@@ -168,9 +196,13 @@ async function ensureGitignoreEntry(entry: string): Promise<void> {
 function starterConfig(): string {
   return `project: support-bot-prompt-regression
 
-prompts:
-  baseline: prompts/support-v1.md
-  candidate: prompts/support-v2.md
+targets:
+  baseline:
+    kind: prompt
+    file: prompts/support-v1.md
+  candidate:
+    kind: prompt
+    file: prompts/support-v2.md
 
 provider:
   type: mock

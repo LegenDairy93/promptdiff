@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import type { RunArtifact } from "./types.js";
+import { getArtifactTarget, type RunArtifact } from "./types.js";
 
 export type ResolvedRun = {
   artifact: RunArtifact;
@@ -44,12 +44,12 @@ export async function resolveRun(ref: string, artifactRoot = process.cwd()): Pro
     return exactRun;
   }
 
-  const byPromptLabel = runs.find((run) => run.artifact.prompt.label === ref);
-  if (byPromptLabel) {
-    return byPromptLabel;
+  const byTargetLabel = runs.find((run) => getArtifactTarget(run.artifact).label === ref);
+  if (byTargetLabel) {
+    return byTargetLabel;
   }
 
-  throw new Error(`Could not resolve run reference "${ref}". Use a run ID, path, "latest", "previous", or prompt label.`);
+  throw new Error(`Could not resolve run reference "${ref}". Use a run ID, path, "latest", "previous", or target label.`);
 }
 
 export async function listRuns(artifactRoot = process.cwd()): Promise<ResolvedRun[]> {
