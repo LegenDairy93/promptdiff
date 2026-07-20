@@ -8,6 +8,7 @@ import type { RunArtifact } from "../artifacts/types.js";
 import { writeRun, type WriteRunResult } from "../artifacts/writeRun.js";
 import { createProvider } from "../providers/createProvider.js";
 import { runAgentCommand } from "./runAgent.js";
+import { validateTrace } from "./validateTrace.js";
 import { renderPrompt } from "./renderPrompt.js";
 
 export type RunSuiteOptions = { targetLabel?: string; promptLabel?: string; artifactRoot?: string };
@@ -33,8 +34,18 @@ export async function runSuite(loadedConfig: LoadedConfig, options: RunSuiteOpti
       ? await provider!.run({ prompt: renderPrompt(prompt!, testCase), input: testCase.input, variables: testCase.variables, model: config.provider.model, temperature: config.provider.temperature })
       : await runAgentCommand({ command: resolved.config.command, cwd: loadedConfig.rootDir, timeoutMs: resolved.config.timeout_ms, label: resolved.label, instructions, tools: resolved.config.tools, testCase });
     const output = "text" in result ? result.text : result.output;
-    const assertions = testCase.assertions.map((assertion) => evaluateAssertion(assertion, output));
-    cases.push({ id: testCase.id, input: testCase.input, output, passed: assertions.every((a) => a.passed), assertions, usage: result.usage, trace: "trace" in result ? result.trace : undefined });
+    // Trace and violations must exist before assertions run — trace assertions read them.
+    const trace = "trace" in result ? result.trace : undefined;
+    const declaredTools = resolved.config.kind === "agent" ? resolved.config.tools : undefined;
+    const violations = "trace" in result
+      ? validateTrace({ steps: result.trace, indices: result.indices, declarations: declaredTools ?? [], malformed: result.malformed })
+      : undefined;
+    const assertions = testCase.assertions.map((assertion) => evaluateAssertion(assertion, { output, trace, violations, declaredTools }));
+    cases.push({
+      id: testCase.id, input: testCase.input, output, passed: assertions.every((a) => a.passed), assertions,
+      usage: result.usage, trace,
+      violations: violations?.length ? violations : undefined
+    });
   }
 
   const passed = cases.filter((testCase) => testCase.passed).length;
@@ -46,7 +57,8 @@ export async function runSuite(loadedConfig: LoadedConfig, options: RunSuiteOpti
       kind: targetConfig.kind, label: targetLabel,
       path: toPortablePath(path.relative(options.artifactRoot ?? process.cwd(), (promptPath ?? instructionsPath) || loadedConfig.path)),
       sha256: sha256(identity),
-      tools: targetConfig.kind === "agent" ? targetConfig.tools : undefined,
+      tools: targetConfig.kind === "agent" ? targetConfig.tools.map((tool) => tool.name) : undefined,
+      toolDecls: targetConfig.kind === "agent" ? targetConfig.tools : undefined,
       command: targetConfig.kind === "agent" ? targetConfig.command : undefined
     },
     summary: { total: cases.length, passed, failed: cases.length - passed }, cases

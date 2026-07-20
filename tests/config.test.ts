@@ -51,7 +51,68 @@ cases:
     const loaded = await loadConfig(configPath);
 
     expect(loaded.config.targets?.simple.kind).toBe("prompt");
-    expect(loaded.config.targets?.workflow).toMatchObject({ kind: "agent", tools: ["search"] });
+    // Bare tool names normalize to declarations, so downstream code never sees a union.
+    expect(loaded.config.targets?.workflow).toMatchObject({ kind: "agent", tools: [{ name: "search" }] });
+  });
+
+  it("accepts a mix of bare tool names and full declarations", async () => {
+    const loaded = await loadConfig(await writeConfig(`project: demo
+targets:
+  workflow:
+    kind: agent
+    command: [node, agent.mjs]
+    tools:
+      - search
+      - name: refund_policy
+        effect: read
+        args_schema:
+          type: object
+          required: [days]
+          properties:
+            days: { type: integer }
+cases:
+  - id: one
+    input: hello
+    assertions:
+      - type: contains
+        value: hello
+`));
+
+    expect(loaded.config.targets?.workflow).toMatchObject({
+      tools: [{ name: "search" }, { name: "refund_policy", effect: "read" }]
+    });
+  });
+
+  it("rejects duplicate tool names", async () => {
+    await expect(loadConfig(await writeConfig(`project: demo
+targets:
+  workflow:
+    kind: agent
+    command: [node, agent.mjs]
+    tools: [search, search]
+cases:
+  - id: one
+    input: hello
+    assertions:
+      - type: contains
+        value: hello
+`))).rejects.toThrow("duplicate tool names");
+  });
+
+  it("rejects tool_args_match without args or schema", async () => {
+    await expect(loadConfig(await writeConfig(`project: demo
+targets:
+  workflow:
+    kind: agent
+    command: [node, agent.mjs]
+    tools: [search]
+cases:
+  - id: one
+    input: hello
+    assertions:
+      - type: tool_args_match
+        name: search
+`))).rejects.toThrow("tool_args_match requires args or schema");
   });
 
   it("rejects configs without cases", async () => {
@@ -68,5 +129,14 @@ cases: []
 });
 
 async function makeTempDir(): Promise<string> {
-  return mkdir(path.join(os.tmpdir(), `promptdiff-${Date.now()}-${Math.random().toString(16).slice(2)}`), { recursive: true });
+  // Returning mkdir's result yields a `\\?\C:\...` extended-length path on Windows; build it ourselves.
+  const dir = path.join(os.tmpdir(), `promptdiff-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  await mkdir(dir, { recursive: true });
+  return dir;
+}
+
+async function writeConfig(contents: string): Promise<string> {
+  const configPath = path.join(await makeTempDir(), "promptdiff.config.yml");
+  await writeFile(configPath, contents, "utf8");
+  return configPath;
 }

@@ -6,8 +6,8 @@ import { Command } from "commander";
 import { listRuns, resolveRun } from "./artifacts/readRun.js";
 import { getArtifactTarget } from "./artifacts/types.js";
 import { loadConfig, ConfigError } from "./config/loadConfig.js";
-import { diffRuns } from "./diff/diffRuns.js";
-import { formatDiff } from "./diff/formatDiff.js";
+import { diffRuns, type RunDiff } from "./diff/diffRuns.js";
+import { formatDiff, ungatedToolHint } from "./diff/formatDiff.js";
 import { formatReport } from "./diff/formatReport.js";
 import { formatTable } from "./output/table.js";
 import { runSuite } from "./runner/runSuite.js";
@@ -17,7 +17,7 @@ const program = new Command();
 program
   .name("promptdiff")
   .description("Review behavioral changes in prompts and agents.")
-  .version("0.1.0");
+  .version("0.2.0");
 
 program
   .command("init")
@@ -67,13 +67,17 @@ program
   .argument("<left>", "left run ID, file path, target label, latest, or previous")
   .argument("<right>", "right run ID, file path, target label, latest, or previous")
   .option("--max-regressions <count>", "allowed regression count before exit 1", parseInteger, 0)
-  .action(async (leftRef: string, rightRef: string, options: { maxRegressions: number }) => {
+  .option("--gate-tool-drift", "count added/removed tools and new violations as regressions", false)
+  .option("--gate-call-deltas", "count tool call-count changes as regressions", false)
+  .action(async (leftRef: string, rightRef: string, options: { maxRegressions: number; gateToolDrift: boolean; gateCallDeltas: boolean }) => {
     await withCliErrors(async () => {
       const left = await resolveRun(leftRef);
       const right = await resolveRun(rightRef);
-      const diff = diffRuns(left.artifact, right.artifact);
+      const diff = diffRuns(left.artifact, right.artifact, { gateToolDrift: options.gateToolDrift, gateCallDeltas: options.gateCallDeltas });
 
       console.log(formatDiff(diff));
+      const hint = ungatedToolHint(diff, options);
+      if (hint) console.log(hint);
       if (diff.regressionCount > options.maxRegressions) {
         process.exitCode = 1;
       }
@@ -87,11 +91,13 @@ program
   .argument("<right>", "right run ID, file path, target label, latest, or previous")
   .option("-o, --output <path>", "output HTML file path", "promptdiff-report.html")
   .option("--max-regressions <count>", "allowed regression count before the report reads Blocked", parseInteger, 0)
-  .action(async (leftRef: string, rightRef: string, options: { output: string; maxRegressions: number }) => {
+  .option("--gate-tool-drift", "count added/removed tools and new violations as regressions", false)
+  .option("--gate-call-deltas", "count tool call-count changes as regressions", false)
+  .action(async (leftRef: string, rightRef: string, options: { output: string; maxRegressions: number; gateToolDrift: boolean; gateCallDeltas: boolean }) => {
     await withCliErrors(async () => {
       const left = await resolveRun(leftRef);
       const right = await resolveRun(rightRef);
-      const diff = diffRuns(left.artifact, right.artifact);
+      const diff = diffRuns(left.artifact, right.artifact, { gateToolDrift: options.gateToolDrift, gateCallDeltas: options.gateCallDeltas });
       const html = formatReport(diff, left.artifact, right.artifact, {
         maxRegressions: options.maxRegressions
       });
@@ -204,6 +210,20 @@ targets:
     kind: prompt
     file: prompts/support-v2.md
 
+  # An agent target runs a local executable that speaks JSON on stdin/stdout.
+  # Uncomment once you have one, then: promptdiff diff candidate workflow
+  # workflow:
+  #   kind: agent
+  #   command: [node, agent.mjs]
+  #   tools:
+  #     - name: lookup_refund_policy
+  #       effect: read            # read | write | external - ranks how alarming a change is
+  #       args_schema:
+  #         type: object
+  #         required: [days_since_purchase]
+  #         properties:
+  #           days_since_purchase: { type: integer, minimum: 0 }
+
 provider:
   type: mock
   model: mock-v1
@@ -219,6 +239,10 @@ cases:
         value: "guaranteed"
       - type: max_length
         value: 1200
+      # Tool drift is reported but does not fail CI on its own. This is how you lock
+      # a real invariant: fail the build if the agent calls anything it did not declare.
+      # (Only meaningful for agent targets - it fails loudly against a prompt target.)
+      # - type: no_undeclared_tools
 
   - id: json-output
     input: "Classify this ticket: I was charged twice."
@@ -265,6 +289,6 @@ async function withCliErrors(fn: () => Promise<void>): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(message);
-    process.exitCode = error instanceof ConfigError ? 2 : 2;
+    process.exitCode = 2;
   }
 }

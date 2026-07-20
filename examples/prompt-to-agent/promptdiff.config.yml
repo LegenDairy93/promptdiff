@@ -4,11 +4,34 @@ targets:
   prompt-baseline:
     kind: prompt
     file: prompt.md
+
   agent-candidate:
     kind: agent
     command: [node, agent.mjs]
     instructions: agent.md
-    tools: [lookup_refund_policy]
+    tools:
+      - name: lookup_refund_policy
+        description: Look up the refund window for a purchase.
+        effect: read
+        args_schema:
+          type: object
+          required: [days_since_purchase]
+          properties:
+            days_since_purchase: { type: integer, minimum: 0 }
+
+  # Same answers as agent-candidate, but it calls an undeclared tool and violates an arg schema.
+  agent-rogue:
+    kind: agent
+    command: [node, rogue-agent.mjs]
+    instructions: agent.md
+    tools:
+      - name: lookup_refund_policy
+        effect: read
+        args_schema:
+          type: object
+          required: [days_since_purchase]
+          properties:
+            days_since_purchase: { type: integer, minimum: 0 }
 
 provider:
   type: mock
@@ -21,6 +44,9 @@ cases:
     assertions:
       - { type: contains, value: refund }
       - { type: not_contains, value: guaranteed }
+      # Nothing gates on tool drift by default — this is how you lock a real invariant.
+      - { type: no_undeclared_tools }
+
   - id: billing-classification
     input: "Classify this ticket: I was charged twice."
     assertions:
@@ -31,3 +57,4 @@ cases:
           properties:
             category: { type: string }
             priority: { type: string }
+      - { type: no_undeclared_tools }

@@ -1,19 +1,28 @@
-import { Ajv } from "ajv";
 import type { AssertionConfig } from "../config/schema.js";
-import type { AssertionResult } from "./types.js";
+import type { AssertionContext, AssertionResult } from "./types.js";
+import { validateAgainstSchema } from "./ajv.js";
+import { evaluateTraceAssertion } from "./evaluateTraceAssertion.js";
 
-export function evaluateAssertion(assertion: AssertionConfig, output: string): AssertionResult {
+/** Accepts a bare output string (v0.1 form) or a full context. Trace assertions need the context. */
+export function evaluateAssertion(assertion: AssertionConfig, context: string | AssertionContext): AssertionResult {
+  const ctx: AssertionContext = typeof context === "string" ? { output: context } : context;
   switch (assertion.type) {
     case "contains":
-      return evaluateContains(assertion, output);
+      return evaluateContains(assertion, ctx.output);
     case "not_contains":
-      return evaluateNotContains(assertion, output);
+      return evaluateNotContains(assertion, ctx.output);
     case "regex":
-      return evaluateRegex(assertion, output);
+      return evaluateRegex(assertion, ctx.output);
     case "json_schema":
-      return evaluateJsonSchema(assertion, output);
+      return evaluateJsonSchema(assertion, ctx.output);
     case "max_length":
-      return evaluateMaxLength(assertion, output);
+      return evaluateMaxLength(assertion, ctx.output);
+    case "tool_called":
+    case "tool_not_called":
+    case "tool_args_match":
+    case "no_undeclared_tools":
+    case "max_steps":
+      return evaluateTraceAssertion(assertion, ctx);
     default:
       return exhaustive(assertion);
   }
@@ -65,16 +74,14 @@ function evaluateJsonSchema(assertion: Extract<AssertionConfig, { type: "json_sc
     };
   }
 
-  const ajv = new Ajv({ allErrors: true });
-  const validate = ajv.compile(assertion.schema);
-  const passed = validate(parsed);
+  const message = validateAgainstSchema(assertion.schema, parsed);
 
   return {
     type: assertion.type,
-    passed,
+    passed: message === undefined,
     expected: assertion.schema,
     actual: parsed,
-    message: passed ? undefined : ajv.errorsText(validate.errors)
+    message
   };
 }
 

@@ -1,5 +1,6 @@
 import type { AssertionResult } from "../assertions/types.js";
-import type { RunArtifact } from "../artifacts/types.js";
+import { getArtifactTarget, getArtifactToolDecls, type RunArtifact, type ToolViolation } from "../artifacts/types.js";
+import { toolUsage } from "./toolUsage.js";
 
 export type AssertionChange = {
   caseId: string;
@@ -19,6 +20,36 @@ export type OutputChange = {
   rightSnippet: string;
 };
 
+/**
+ * How alarming a tool change is. Drives ordering and truncation so a dangerous change is
+ * never buried under benign ones — the safeguard that makes the informational default safe.
+ */
+export type ToolSeverity = "violation" | "effect" | "drift" | "count";
+
+export const TOOL_SEVERITY_ORDER: ToolSeverity[] = ["violation", "effect", "drift", "count"];
+
+export type ToolChange = {
+  caseId: string;
+  name: string;
+  leftCalls: number;
+  rightCalls: number;
+  status: "added" | "removed" | "count_changed";
+  severity: ToolSeverity;
+  /** Declared effect of the tool on the right-hand run, when known. */
+  effect?: "read" | "write" | "external";
+};
+
+export type ViolationChange = {
+  caseId: string;
+  kind: ToolViolation["kind"];
+  leftCount: number;
+  rightCount: number;
+  tools: string[];
+};
+
+/** Both default to false: tool drift is reported but does not gate CI unless asked. */
+export type DiffOptions = { gateToolDrift?: boolean; gateCallDeltas?: boolean };
+
 export type RunDiff = {
   leftRunId: string;
   rightRunId: string;
@@ -29,10 +60,12 @@ export type RunDiff = {
   newlyFailing: string[];
   assertionChanges: AssertionChange[];
   outputChanges: OutputChange[];
+  toolChanges: ToolChange[];
+  violationChanges: ViolationChange[];
   regressionCount: number;
 };
 
-export function diffRuns(left: RunArtifact, right: RunArtifact): RunDiff {
+export function diffRuns(left: RunArtifact, right: RunArtifact, options: DiffOptions = {}): RunDiff {
   const leftCases = new Map(left.cases.map((testCase) => [testCase.id, testCase]));
   const rightCases = new Map(right.cases.map((testCase) => [testCase.id, testCase]));
   const caseIds = Array.from(new Set([...leftCases.keys(), ...rightCases.keys()])).sort();
@@ -40,7 +73,10 @@ export function diffRuns(left: RunArtifact, right: RunArtifact): RunDiff {
   const newlyFailing: string[] = [];
   const assertionChanges: AssertionChange[] = [];
   const outputChanges: OutputChange[] = [];
+  const toolChanges: ToolChange[] = [];
+  const violationChanges: ViolationChange[] = [];
   const regressedCaseIds = new Set<string>();
+  const effects = toolEffects(right);
 
   for (const caseId of caseIds) {
     const leftCase = leftCases.get(caseId);
@@ -82,6 +118,28 @@ export function diffRuns(left: RunArtifact, right: RunArtifact): RunDiff {
         rightSnippet: snippet(rightCase.output)
       });
     }
+
+    // Identical output does not mean identical behavior: compare which tools ran, and how often.
+    const leftUsage = toolUsage(leftCase);
+    const rightUsage = toolUsage(rightCase);
+    for (const name of [...new Set([...leftUsage.keys(), ...rightUsage.keys()])].sort()) {
+      const leftCalls = leftUsage.get(name) ?? 0;
+      const rightCalls = rightUsage.get(name) ?? 0;
+      if (leftCalls === rightCalls) continue;
+      const status = leftCalls === 0 ? "added" : rightCalls === 0 ? "removed" : "count_changed";
+      const effect = effects.get(name);
+      const severity: ToolSeverity = status === "count_changed"
+        ? "count"
+        : effect === "write" || effect === "external" ? "effect" : "drift";
+      toolChanges.push({ caseId, name, leftCalls, rightCalls, status, severity, effect });
+      const gated = status === "count_changed" ? options.gateCallDeltas : options.gateToolDrift;
+      if (gated) regressedCaseIds.add(caseId);
+    }
+
+    collectViolationChanges(caseId, leftCase.violations, rightCase.violations).forEach((change) => {
+      violationChanges.push(change);
+      if (options.gateToolDrift) regressedCaseIds.add(caseId);
+    });
   }
 
   const leftPassRate = passRate(left);
@@ -97,8 +155,46 @@ export function diffRuns(left: RunArtifact, right: RunArtifact): RunDiff {
     newlyFailing,
     assertionChanges,
     outputChanges,
+    toolChanges: toolChanges.sort(bySeverity),
+    violationChanges,
     regressionCount: regressedCaseIds.size
   };
+}
+
+function bySeverity(left: ToolChange, right: ToolChange): number {
+  const delta = TOOL_SEVERITY_ORDER.indexOf(left.severity) - TOOL_SEVERITY_ORDER.indexOf(right.severity);
+  return delta !== 0 ? delta : left.caseId.localeCompare(right.caseId) || left.name.localeCompare(right.name);
+}
+
+/** Declared effects from the right-hand run, used to rank a tool change by how dangerous it is. */
+function toolEffects(artifact: RunArtifact): Map<string, "read" | "write" | "external"> {
+  const effects = new Map<string, "read" | "write" | "external">();
+  let declarations;
+  try {
+    declarations = getArtifactToolDecls(getArtifactTarget(artifact));
+  } catch {
+    return effects;
+  }
+  for (const declaration of declarations) if (declaration.effect) effects.set(declaration.name, declaration.effect);
+  return effects;
+}
+
+function collectViolationChanges(caseId: string, left: ToolViolation[] = [], right: ToolViolation[] = []): ViolationChange[] {
+  const kinds = new Set<ToolViolation["kind"]>([...left, ...right].map((violation) => violation.kind));
+  const changes: ViolationChange[] = [];
+  for (const kind of kinds) {
+    const leftMatches = left.filter((violation) => violation.kind === kind);
+    const rightMatches = right.filter((violation) => violation.kind === kind);
+    if (rightMatches.length <= leftMatches.length) continue;
+    changes.push({
+      caseId,
+      kind,
+      leftCount: leftMatches.length,
+      rightCount: rightMatches.length,
+      tools: [...new Set(rightMatches.map((violation) => violation.tool).filter((tool): tool is string => Boolean(tool)))]
+    });
+  }
+  return changes;
 }
 
 function collectAssertionChanges(

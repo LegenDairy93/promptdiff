@@ -1,5 +1,5 @@
 import type { AssertionResult } from "../assertions/types.js";
-import { getArtifactTarget, type RunArtifact } from "../artifacts/types.js";
+import { getArtifactTarget, getArtifactToolDecls, type AgentTraceStep, type RunArtifact } from "../artifacts/types.js";
 import type { RunDiff } from "./diffRuns.js";
 
 export type ReportOptions = {
@@ -137,7 +137,11 @@ function orderedChangedCaseIds(diff: RunDiff, left: RunArtifact, right: RunArtif
     ...diff.newlyPassing,
     ...diff.newlyFailing,
     ...diff.assertionChanges.map((change) => change.caseId),
-    ...diff.outputChanges.map((change) => change.caseId)
+    ...diff.outputChanges.map((change) => change.caseId),
+    // Without these, a case whose only change is which tools ran never renders — and the
+    // trace comparison, the whole point of the feature, stays invisible.
+    ...diff.toolChanges.map((change) => change.caseId),
+    ...diff.violationChanges.map((change) => change.caseId)
   ]);
   const order = [...left.cases.map((c) => c.id), ...right.cases.map((c) => c.id)];
   const seen = new Set<string>();
@@ -181,8 +185,19 @@ function caseCard(
       </div>
     </div>
     ${traceComparison(leftCase, rightCase)}
+    ${violationRows(rightCase?.violations ?? [])}
     ${assertionRows(leftCase?.assertions ?? [], rightCase?.assertions ?? [])}
   </article>`;
+}
+
+function violationRows(violations: NonNullable<RunArtifact["cases"][number]["violations"]>): string {
+  if (violations.length === 0) return "";
+  const rows = violations.map((violation) => `<div class="row violation">
+    <span class="atype">${esc(violation.kind)}</span>
+    <span class="aval">${esc(violation.tool ? `${violation.tool} · step ${violation.step}` : `step ${violation.step}`)}</span>
+    <span class="aval grow">${esc(violation.message)}</span>
+  </div>`).join("");
+  return `<div class="asserts violations">${rows}</div>`;
 }
 
 function statusPill(was: boolean, now: boolean): string {
@@ -203,7 +218,7 @@ function targetSection(
     ${row("kind", left.kind, right.kind)}
     ${row("source", left.path ?? "embedded", right.path ?? "embedded")}
     ${row("runtime", targetRuntime(left, leftArtifact), targetRuntime(right, rightArtifact))}
-    ${row("tools", (left.tools ?? []).join(", ") || "none", (right.tools ?? []).join(", ") || "none")}
+    ${row("tools", describeTools(left), describeTools(right))}
     ${row("identity", left.sha256.slice(0, 12), right.sha256.slice(0, 12))}
   </div></section>`;
 }
@@ -212,12 +227,74 @@ function targetRuntime(target: ReturnType<typeof getArtifactTarget>, artifact: R
   return target.command?.join(" ") ?? providerLabel(artifact);
 }
 
+/** Tool names, annotated with declared effect and whether their arguments are schema-checked. */
+function describeTools(target: ReturnType<typeof getArtifactTarget>): string {
+  const declarations = getArtifactToolDecls(target);
+  if (declarations.length === 0) return "none";
+  return declarations.map((declaration) => {
+    const notes = [declaration.effect, declaration.args_schema ? "schema" : undefined].filter(Boolean);
+    return notes.length > 0 ? `${declaration.name} (${notes.join(", ")})` : declaration.name;
+  }).join(", ");
+}
+
+type TraceRow = { left?: AgentTraceStep; right?: AgentTraceStep; state: "same" | "changed" | "added" | "removed" };
+
+/**
+ * Align the two traces rather than dumping them side by side, so the reader can see which step
+ * actually differs. Greedy two-pointer with a small lookahead: agent traces are short and mostly
+ * prefix-identical, where this is indistinguishable from full LCS at a fraction of the code.
+ */
+function alignTraces(left: AgentTraceStep[] = [], right: AgentTraceStep[] = [], lookahead = 3): TraceRow[] {
+  const key = (step: AgentTraceStep) => `${step.type}:${step.name ?? ""}`;
+  const rows: TraceRow[] = [];
+  let l = 0;
+  let r = 0;
+  while (l < left.length && r < right.length) {
+    const leftStep = left[l]!;
+    const rightStep = right[r]!;
+    if (key(leftStep) === key(rightStep)) {
+      const same = stringify(leftStep.output ?? leftStep.input ?? "") === stringify(rightStep.output ?? rightStep.input ?? "");
+      rows.push({ left: leftStep, right: rightStep, state: same ? "same" : "changed" });
+      l += 1; r += 1;
+      continue;
+    }
+    // Does the current left step reappear soon on the right? If so the right side inserted steps.
+    const aheadInRight = right.slice(r + 1, r + 1 + lookahead).findIndex((step) => key(step) === key(leftStep));
+    if (aheadInRight !== -1) {
+      for (let skip = 0; skip <= aheadInRight; skip += 1) rows.push({ right: right[r + skip], state: "added" });
+      r += aheadInRight + 1;
+      continue;
+    }
+    const aheadInLeft = left.slice(l + 1, l + 1 + lookahead).findIndex((step) => key(step) === key(rightStep));
+    if (aheadInLeft !== -1) {
+      for (let skip = 0; skip <= aheadInLeft; skip += 1) rows.push({ left: left[l + skip], state: "removed" });
+      l += aheadInLeft + 1;
+      continue;
+    }
+    rows.push({ left: leftStep, right: rightStep, state: "changed" });
+    l += 1; r += 1;
+  }
+  while (l < left.length) rows.push({ left: left[l++], state: "removed" });
+  while (r < right.length) rows.push({ right: right[r++], state: "added" });
+  return rows;
+}
+
 function traceComparison(leftCase?: RunArtifact["cases"][number], rightCase?: RunArtifact["cases"][number]): string {
   if (!leftCase?.trace && !rightCase?.trace) return "";
-  const render = (steps = [] as NonNullable<RunArtifact["cases"][number]["trace"]>) => steps.map((step, index) =>
-    `<div class="trace-step"><b>${index + 1}. ${esc(step.type)}${step.name ? ` / ${esc(step.name)}` : ""}</b><span>${esc(stringify(step.output ?? step.input ?? ""))}</span></div>`
-  ).join("") || `<span class="empty">no trace captured</span>`;
-  return `<div class="trace"><div><div class="side-lab">Baseline trace</div>${render(leftCase?.trace)}</div><div><div class="side-lab">Candidate trace</div>${render(rightCase?.trace)}</div></div>`;
+  const rows = alignTraces(leftCase?.trace, rightCase?.trace);
+  if (rows.length === 0) return `<div class="trace"><span class="empty">no trace captured</span></div>`;
+  const cell = (step?: AgentTraceStep) => step
+    ? `<b>${esc(step.type)}${step.name ? ` / ${esc(step.name)}` : ""}</b><span>${esc(stringify(step.output ?? step.input ?? ""))}</span>`
+    : `<span class="empty">&mdash;</span>`;
+  const body = rows.map((row, index) => `<div class="trace-row ${row.state}">
+    <span class="trace-n">${index + 1}</span>
+    <div class="trace-step">${cell(row.left)}</div>
+    <div class="trace-step">${cell(row.right)}</div>
+  </div>`).join("");
+  return `<div class="trace-aligned">
+    <div class="trace-head"><span class="trace-n"></span><div class="side-lab">Baseline trace</div><div class="side-lab">Candidate trace</div></div>
+    ${body}
+  </div>`;
 }
 
 function stringify(value: unknown): string {
@@ -242,9 +319,15 @@ function assertionRows(leftAssertions: AssertionResult[], rightAssertions: Asser
   return `<div class="asserts">${rows.join("")}</div>`;
 }
 
+const TRACE_ASSERTIONS = new Set(["tool_called", "tool_not_called", "tool_args_match", "no_undeclared_tools", "max_steps"]);
+
 function describeAssertion(assertion?: AssertionResult): string {
   if (!assertion || assertion.expected === undefined) return "";
   const { expected, actual } = assertion;
+  // Trace assertions already describe themselves in prose; quoting them reads oddly.
+  if (TRACE_ASSERTIONS.has(assertion.type) && typeof expected === "string") {
+    return actual === undefined || actual === null ? expected : `${expected} · actual ${stringify(actual)}`;
+  }
   if (typeof expected === "string") return `"${expected}"`;
   if (typeof expected === "number") {
     return typeof actual === "number" ? `${expected} · actual ${actual}` : String(expected);
@@ -386,6 +469,17 @@ td.mono,th.mono{font-family:var(--mono)}
 .before .out{background:var(--bad-soft);border-color:var(--bad-line)}
 .after .out{background:var(--good-soft);border-color:var(--good-line)}
 .asserts{padding:6px 18px 16px}.target-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:8px 18px}.trace{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}.trace>div{padding:14px 18px}.trace>div:first-child{border-right:1px solid var(--line)}.trace-step{display:flex;flex-direction:column;gap:3px;margin:8px 0;padding:9px 10px;background:var(--surface-2);border-radius:var(--radius-sm);font-family:var(--mono);font-size:.75rem}.trace-step span{color:var(--muted);overflow-wrap:anywhere}
+.trace-aligned{border-top:1px solid var(--line);padding:10px 18px 16px}
+.trace-head,.trace-row{display:grid;grid-template-columns:28px 1fr 1fr;gap:10px;align-items:stretch}
+.trace-head .side-lab{padding:6px 0}
+.trace-n{font-family:var(--mono);font-size:.7rem;color:var(--muted);display:flex;align-items:center;justify-content:center}
+.trace-row{border-left:3px solid transparent;border-radius:var(--radius-sm)}
+.trace-row.changed{border-left-color:var(--warn,#b58900);background:color-mix(in srgb,var(--warn,#b58900) 6%,transparent)}
+.trace-row.added{border-left-color:var(--good,#2ea043);background:color-mix(in srgb,var(--good,#2ea043) 6%,transparent)}
+.trace-row.removed{border-left-color:var(--bad,#d1242f);background:color-mix(in srgb,var(--bad,#d1242f) 6%,transparent)}
+.trace-row .empty{color:var(--muted);font-family:var(--mono);font-size:.75rem;display:flex;align-items:center;padding:9px 10px}
+.violations .row{border-left:3px solid var(--bad,#d1242f);padding-left:9px}
+.violations .aval.grow{flex:1;color:var(--muted)}
 .asserts .row{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:.82rem;border-top:1px solid var(--line)}
 .asserts .row:first-child{border-top:none}
 .asserts .atype{font-family:var(--mono);font-weight:600}

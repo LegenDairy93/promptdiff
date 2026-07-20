@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { diffRuns } from "../src/diff/diffRuns.js";
 import { formatReport } from "../src/diff/formatReport.js";
 import type { RunArtifact } from "../src/artifacts/types.js";
+import { agentArtifact, traceStep } from "./fixtures.js";
 
 describe("formatReport", () => {
   it("renders a self-contained report that reads Safe to ship when no regressions", () => {
@@ -47,6 +48,39 @@ describe("formatReport", () => {
     expect(html).toContain("agent / candidate");
     expect(html).toContain("lookup_policy");
     expect(html).toContain("Candidate trace");
+  });
+
+  it("renders a case whose only change is which tools ran", () => {
+    // Guards the orderedChangedCaseIds fix: caseCard -> traceComparison only runs for changed
+    // cases, so without tool changes feeding that set the whole feature is invisible here.
+    const left = agentArtifact("l", "baseline", [
+      { id: "refund", passed: true, output: "same", trace: [traceStep("tool", "lookup_policy")] }
+    ], { tools: ["lookup_policy", "web_search"] });
+    const right = agentArtifact("r", "candidate", [
+      { id: "refund", passed: true, output: "same", trace: [traceStep("tool", "web_search")] }
+    ], { tools: ["lookup_policy", "web_search"] });
+
+    const diff = diffRuns(left, right);
+    const html = formatReport(diff, left, right);
+
+    expect(diff.outputChanges).toEqual([]);
+    expect(html).toContain("refund");
+    expect(html).toContain("trace-aligned");
+    expect(html).toContain("web_search");
+  });
+
+  it("renders recorded violations for a case", () => {
+    const left = agentArtifact("l", "baseline", [{ id: "a", passed: true, trace: [] }], { tools: ["allowed"] });
+    const right = agentArtifact("r", "candidate", [{
+      id: "a", passed: false,
+      trace: [traceStep("tool", "rm")],
+      violations: [{ kind: "undeclared_tool", step: 0, tool: "rm", message: "tool \"rm\" was called but is not declared on this target" }]
+    }], { tools: ["allowed"] });
+
+    const html = formatReport(diffRuns(left, right), left, right);
+
+    expect(html).toContain("undeclared_tool");
+    expect(html).toContain("not declared");
   });
 
   it("escapes HTML in case outputs so they cannot break the markup", () => {

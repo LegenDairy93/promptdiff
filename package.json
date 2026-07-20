@@ -1,6 +1,6 @@
 {
   "name": "promptdiff",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Behavioral diffs and regression gates for prompts and agents.",
   "type": "module",
   "bin": {
@@ -27,7 +27,11 @@
     "regression",
     "json-schema",
     "local-first",
-    "ci"
+    "ci",
+    "agents",
+    "agent-evaluation",
+    "llmops",
+    "observability"
   ],
   "license": "MIT",
   "dependencies": {

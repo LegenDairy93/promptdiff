@@ -62,8 +62,23 @@ targets:
     kind: agent
     command: [node, agent.mjs]
     instructions: agent.md
-    tools: [lookup_refund_policy]
+    tools:
+      - name: lookup_refund_policy
+        effect: read              # read | write | external
+        args_schema:              # every call is validated against this
+          type: object
+          required: [days_since_purchase]
+          properties:
+            days_since_purchase: { type: integer, minimum: 0 }
+      - escalate_to_human         # a bare name still works
 ```
+
+Declaring tools turns them from documentation into a contract. Calls to tools you did not
+declare, and calls whose arguments fail `args_schema`, are recorded as **violations** on the
+run. `effect` is optional and only ranks how alarming a change is: a candidate that starts
+calling a `write` tool sorts above one that called `search` an extra time.
+
+A target with **no** `tools:` opts out of tool policy entirely — nothing is flagged.
 
 A `prompt` target runs through the configured model provider and records prompt identity, model settings, output, assertions, and usage.
 
@@ -76,11 +91,13 @@ Legacy `prompts:` configs continue to work and are normalized to `kind: prompt`.
 - target kind: prompt or agent
 - source/instruction identity and SHA-256 hash
 - model/provider or local command runtime
-- declared agent tools
+- declared agent tools, with effect and whether arguments are schema-checked
 - pass-rate and assertion changes
 - newly passing and newly failing cases
 - output changes
-- side-by-side agent traces in the HTML report
+- **tool changes**: which tools were added, removed, or called a different number of times
+- **tool violations**: undeclared tools, invalid arguments, malformed trace steps
+- **aligned** agent traces in the HTML report, highlighting added/removed/changed steps
 - a CI verdict based on allowed regressions
 
 Artifacts are written to `.promptdiff/runs/*.json`. They stay local and are ignored by default because prompts, inputs, outputs, and traces may contain sensitive data.
@@ -94,6 +111,10 @@ promptdiff list
 promptdiff show latest
 promptdiff diff previous latest --max-regressions 0
 promptdiff report previous latest --output promptdiff-report.html
+
+# opt in to gating on execution-path changes
+promptdiff diff baseline candidate --gate-tool-drift
+promptdiff diff baseline candidate --gate-call-deltas
 ```
 
 `--prompt` remains as a deprecated alias for `--target`.
@@ -106,7 +127,47 @@ Exit codes:
 
 ## Assertions
 
-The MVP supports `contains`, `not_contains`, `regex`, `json_schema`, and `max_length`. String assertions are case-insensitive by default.
+Output assertions: `contains`, `not_contains`, `regex`, `json_schema`, `max_length`. String assertions are case-insensitive by default.
+
+Trace assertions (agent targets — they fail loudly against a prompt target rather than passing vacuously):
+
+| Assertion | Passes when |
+|---|---|
+| `tool_called` | the named tool was called, within `min_times`/`max_times`, optionally filtered by `args` |
+| `tool_not_called` | the named tool was never called |
+| `tool_args_match` | `any` (default) or `all` calls satisfy `args` (deep subset) or `schema` (JSON Schema) |
+| `no_undeclared_tools` | nothing was called that the target did not declare, and no trace step was malformed |
+| `max_steps` | the trace is within `value` steps, optionally filtered by `step_type` |
+
+```yaml
+assertions:
+  - { type: no_undeclared_tools }
+  - { type: tool_not_called, name: delete_records }
+  - { type: tool_called, name: lookup_refund_policy, max_times: 2 }
+```
+
+## Tool changes and CI
+
+**Identical text output does not mean identical behavior.** An agent can return the same answer
+while calling a more expensive tool, reaching a new external service, using a write tool instead
+of a read one, or skipping a verification step. promptdiff surfaces all of it.
+
+It does **not** fail your build for it by default. Agent execution paths vary legitimately and are
+often nondeterministic; gating every difference would create false alarms and make prompt-to-agent
+comparison fail immediately — the very thing this tool exists to enable.
+
+| Change | Default behavior |
+|---|---|
+| Declared tool A → declared tool B | Report, CI passes |
+| Tool call count changed | Report, CI passes |
+| Explicit `tool_not_called` assertion fails | **CI fails** |
+| Explicit `no_undeclared_tools` assertion fails | **CI fails** |
+| `--gate-tool-drift` enabled | **CI fails** on added/removed tools and new violations |
+| `--gate-call-deltas` enabled | **CI fails** on call-count changes |
+
+Enforce the invariants you actually care about with assertions; reach for the gate flags when you
+want the execution path locked wholesale. Tool sections render above output changes in the diff and
+are sorted by severity, so a `write`-effect tool appearing is never buried under a count change.
 
 ## CI
 

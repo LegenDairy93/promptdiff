@@ -30,6 +30,43 @@ export function formatDiff(diff: RunDiff): string {
     ]));
   }
 
+  // Tool sections render above output changes: nothing gates on them by default, so visibility is the safeguard.
+  if (diff.violationChanges.length > 0) {
+    lines.push("");
+    lines.push("Tool violations");
+    lines.push(formatTable([
+      ["Case", "Kind", "Left", "Right", "Tools"],
+      ...diff.violationChanges.map((change) => [
+        change.caseId,
+        change.kind,
+        String(change.leftCount),
+        String(change.rightCount),
+        formatList(change.tools)
+      ])
+    ]));
+  }
+
+  if (diff.toolChanges.length > 0) {
+    lines.push("");
+    lines.push("Tool changes");
+    // Already severity-sorted. High-severity rows are never hidden behind a truncation.
+    const alwaysShown = diff.toolChanges.filter((change) => change.severity === "violation" || change.severity === "effect");
+    const shown = diff.toolChanges.slice(0, Math.max(3, alwaysShown.length));
+    lines.push(formatTable([
+      ["Case", "Tool", "Left", "Right", "Change"],
+      ...shown.map((change) => [
+        change.caseId,
+        change.effect ? `${change.name} (${change.effect})` : change.name,
+        String(change.leftCalls),
+        String(change.rightCalls),
+        change.status === "count_changed" ? "count" : change.status
+      ])
+    ]));
+    if (diff.toolChanges.length > shown.length) {
+      lines.push(`  ...and ${diff.toolChanges.length - shown.length} more`);
+    }
+  }
+
   if (diff.outputChanges.length > 0) {
     lines.push("");
     lines.push("Changed outputs");
@@ -44,6 +81,29 @@ export function formatDiff(diff: RunDiff): string {
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Tool drift is informational by default, so the stricter policies have to be discoverable at the
+ * moment they become relevant. Returns undefined when there is no ungated drift to mention.
+ *
+ * Lives here rather than in cli.ts so it is importable without executing the CLI.
+ */
+export function ungatedToolHint(
+  diff: Pick<RunDiff, "toolChanges" | "violationChanges">,
+  options: { gateToolDrift?: boolean; gateCallDeltas?: boolean }
+): string | undefined {
+  const drift = diff.toolChanges.filter((change) => change.status !== "count_changed").length + diff.violationChanges.length;
+  const deltas = diff.toolChanges.filter((change) => change.status === "count_changed").length;
+  const ungated = (options.gateToolDrift ? 0 : drift) + (options.gateCallDeltas ? 0 : deltas);
+  if (ungated === 0) return undefined;
+  return [
+    ``,
+    `${ungated} tool change${ungated === 1 ? "" : "s"} detected (informational — CI not affected).`,
+    `  Gate on them:      --gate-tool-drift          (added/removed tools, new violations)`,
+    `                     --gate-call-deltas         (call-count changes)`,
+    `  Lock an invariant: add a \`no_undeclared_tools\` or \`tool_not_called\` assertion.`
+  ].join("\n");
 }
 
 function percent(value: number): string {
