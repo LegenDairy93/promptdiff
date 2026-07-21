@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)](package.json)
 
-**Behavioral diffs for prompts and agents.**
+**Behavioral version control and release governance for prompts and agents.**
 
 A prompt is one model call. An agent is a program that can reason, call tools, and take several steps. Most eval output makes both look like a final string. `promptdiff` keeps the difference visible and reviews the change:
 
@@ -24,18 +24,18 @@ The question is not only **“did the candidate pass?”** It is **“what chang
 
 [Promptfoo](https://github.com/promptfoo/promptfoo) is a broad LLM evaluation and red-teaming platform. It tests prompts, models, RAG systems, and agents across many providers, assertions, and security probes. If you need a full evaluation or red-team platform, use Promptfoo.
 
-PromptDiff is a deliberately focused change-review tool:
+PromptDiff is a focused behavioral change-control layer:
 
 | | PromptDiff | Promptfoo |
 |---|---|---|
-| Primary workflow | Review two behavioral snapshots | Run evaluation matrices and red-team scans |
+| Primary workflow | Version and approve behavioral changes | Run evaluation matrices and red-team scans |
 | Main unit | A before/after change | A target × prompt × test matrix |
 | Prompt representation | One-shot source, model settings, output | Prompt/provider under evaluation |
 | Agent representation | Executable target, declared tools, ordered trace, final output | Custom target or provider under evaluation |
-| Review artifact | Small local JSON plus a self-contained before/after HTML report | Evaluation results, dashboards, and exports |
-| Intended use | Explain and gate a specific change in a PR | Measure quality, compare providers, and probe security |
+| Review artifact | Versioned local runs, promotion history, and a self-contained HTML report | Evaluation results, dashboards, and exports |
+| Intended use | Explain, approve, and gate a change before release | Measure quality, compare providers, and probe security |
 
-This is workflow differentiation, not a claim that Promptfoo cannot test agents or detect regressions. PromptDiff chooses a narrower job: make a behavioral change legible in code review.
+This is workflow differentiation, not a claim that Promptfoo cannot test agents or detect regressions. PromptDiff owns the approval loop around a change: capture behavior, compare it, promote an accepted baseline, and gate what ships next.
 
 ## See It in Two Minutes
 
@@ -49,6 +49,25 @@ node dist/cli.js report prompt-baseline agent-candidate -o promptdiff-report.htm
 ```
 
 The demo is deterministic and offline. The agent is a real local command target; it reads a case as JSON and returns a final output plus an ordered trace.
+
+## Approve and Reuse a Behavioral Baseline
+
+A passing run is not automatically approved behavior. Promote it deliberately, record why, and compare future candidates against the named snapshot:
+
+```bash
+promptdiff promote latest --baseline production \
+  --actor "reviewer@example.com" \
+  --reason "Approved in PR #42"
+
+promptdiff diff baseline:production latest
+promptdiff report baseline:production latest -o promptdiff-report.html
+promptdiff baselines
+promptdiff history --baseline production
+```
+
+Each promotion writes an integrity-checked snapshot under `.promptdiff/baselines/` and an append-only event to `.promptdiff/history.jsonl`. New run artifacts also record PromptDiff version, portable config path, Git commit/branch/dirty state, and GitHub Actions provenance when available.
+
+Baseline state remains local and ignored by default because artifacts may contain sensitive prompts, inputs, outputs, and traces. A shared registry and GitHub approval workflow belong to the hosted collaboration layer; v0.3 establishes the portable local contract.
 
 ## Prompt and Agent Are Different Types
 
@@ -111,6 +130,10 @@ promptdiff list
 promptdiff show latest
 promptdiff diff previous latest --max-regressions 0
 promptdiff report previous latest --output promptdiff-report.html
+promptdiff promote latest --baseline production --reason "Approved in PR #42"
+promptdiff baselines
+promptdiff history --baseline production
+promptdiff diff baseline:production latest
 
 # opt in to gating on execution-path changes
 promptdiff diff baseline candidate --gate-tool-drift
@@ -184,7 +207,7 @@ are sorted by severity, so a `write`-effect tool appearing is never buried under
 
 This repository is an early open-source MVP. It has no hosted service, database, authentication, semantic judge, or production observability. The mock provider and example agent are deterministic fixtures for understanding the review workflow, not substitutes for model-quality evaluation.
 
-The roadmap follows the change-review thesis: trace-level diffs, tool-call assertions, baseline pinning, GitHub PR annotations, and adapters for common agent runtimes.
+The roadmap follows the change-control thesis: policy-as-code, deterministic replay, incident-to-regression workflows, GitHub PR annotations, and adapters for common agent runtimes and OpenTelemetry traces.
 
 ## Development
 

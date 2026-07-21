@@ -1,6 +1,6 @@
 # Contributing
 
-`promptdiff` is an early local-first CLI for prompt regression testing. Contributions should keep the MVP focused: deterministic local runs, readable artifacts, clear assertions, and CI-friendly behavior.
+`promptdiff` is a local-first behavioral version-control CLI for prompts and agents. Contributions should preserve portable artifacts, explicit approval decisions, deterministic behavior where possible, and CI-friendly failure modes.
 
 ## Local Setup
 
@@ -13,14 +13,17 @@ npm test
 Run the example smoke path:
 
 ```bash
-node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt baseline
-node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt candidate
-node dist/cli.js diff baseline latest
+node dist/cli.js run --config examples/prompt-to-agent/promptdiff.config.yml --target prompt-baseline
+node dist/cli.js promote latest --baseline development --reason "Contributor smoke test"
+node dist/cli.js run --config examples/prompt-to-agent/promptdiff.config.yml --target agent-candidate
+node dist/cli.js diff baseline:development latest
+node dist/cli.js history --baseline development
 ```
 
 ## Development Guidelines
 
 - Keep provider support isolated behind the provider interface.
+- Treat baseline snapshots and promotion history as compatibility-sensitive product data.
 - Do not store API keys or secrets in run artifacts.
 - Prefer deterministic tests and mock-provider examples.
 - Add focused tests for config, assertions, artifacts, and diff behavior when changing those areas.

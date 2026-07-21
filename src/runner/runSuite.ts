@@ -5,6 +5,7 @@ import { evaluateAssertion } from "../assertions/evaluateAssertion.js";
 import type { LoadedConfig, TargetConfig } from "../config/schema.js";
 import { sha256 } from "../artifacts/hash.js";
 import type { RunArtifact } from "../artifacts/types.js";
+import { collectProvenance } from "../artifacts/provenance.js";
 import { writeRun, type WriteRunResult } from "../artifacts/writeRun.js";
 import { createProvider } from "../providers/createProvider.js";
 import { runAgentCommand } from "./runAgent.js";
@@ -50,8 +51,11 @@ export async function runSuite(loadedConfig: LoadedConfig, options: RunSuiteOpti
 
   const passed = cases.filter((testCase) => testCase.passed).length;
   const identity = targetConfig.kind === "prompt" ? prompt! : JSON.stringify({ instructions: instructions ?? null, tools: targetConfig.tools, command: targetConfig.command });
+  const artifactRoot = options.artifactRoot ?? process.cwd();
   const artifact: RunArtifact = {
+    schemaVersion: 1,
     runId: createRunId(), project: config.project, createdAt: new Date().toISOString(),
+    provenance: await collectProvenance({ cwd: loadedConfig.rootDir, configPath: loadedConfig.path, artifactRoot }),
     provider: targetConfig.kind === "prompt" ? { type: config.provider.type, model: config.provider.model, temperature: config.provider.temperature } : { type: "command" },
     target: {
       kind: targetConfig.kind, label: targetLabel,
@@ -63,7 +67,7 @@ export async function runSuite(loadedConfig: LoadedConfig, options: RunSuiteOpti
     },
     summary: { total: cases.length, passed, failed: cases.length - passed }, cases
   };
-  return writeRun(artifact, options.artifactRoot);
+  return writeRun(artifact, artifactRoot);
 }
 
 function normalizedTargets(loaded: LoadedConfig): Record<string, TargetConfig> {

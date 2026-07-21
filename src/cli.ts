@@ -11,13 +11,15 @@ import { formatDiff, ungatedToolHint } from "./diff/formatDiff.js";
 import { formatReport } from "./diff/formatReport.js";
 import { formatTable } from "./output/table.js";
 import { runSuite } from "./runner/runSuite.js";
+import { listBaselines, listPromotionHistory, promoteBaseline } from "./baselines/registry.js";
+import { VERSION } from "./version.js";
 
 const program = new Command();
 
 program
   .name("promptdiff")
-  .description("Review behavioral changes in prompts and agents.")
-  .version("0.2.0");
+  .description("Version, review, and govern behavioral changes in prompts and agents.")
+  .version(VERSION);
 
 program
   .command("init")
@@ -104,6 +106,72 @@ program
 
       await writeFile(options.output, html, "utf8");
       console.log(`Wrote report to ${path.relative(process.cwd(), path.resolve(options.output))}`);
+    });
+  });
+
+program
+  .command("promote")
+  .description("Promote a run to a named behavioral baseline")
+  .argument("<run>", "run ID, file path, target label, latest, or previous")
+  .option("-b, --baseline <name>", "baseline name", "production")
+  .option("--reason <text>", "why this behavior was approved")
+  .option("--actor <name>", "person or system approving the promotion")
+  .action(async (runRef: string, options: { baseline: string; reason?: string; actor?: string }) => {
+    await withCliErrors(async () => {
+      const resolved = await resolveRun(runRef);
+      const record = await promoteBaseline(resolved, {
+        name: options.baseline,
+        reason: options.reason,
+        actor: options.actor
+      });
+      const target = getArtifactTarget(record.artifact);
+      console.log(formatTable([
+        ["Baseline", "Project", "Kind", "Target", "Run ID", "Promoted"],
+        [record.name, record.project, target.kind, target.label, record.runId, record.promotedAt]
+      ]));
+    });
+  });
+
+program
+  .command("baselines")
+  .description("List approved behavioral baselines")
+  .action(async () => {
+    await withCliErrors(async () => {
+      const baselines = await listBaselines();
+      if (baselines.length === 0) {
+        console.log("No behavioral baselines found.");
+        return;
+      }
+      console.log(formatTable([
+        ["Baseline", "Project", "Kind", "Target", "Run ID", "Promoted", "Actor"],
+        ...baselines.map((baseline) => {
+          const target = getArtifactTarget(baseline.artifact);
+          return [baseline.name, baseline.project, target.kind, target.label, baseline.runId, baseline.promotedAt, baseline.actor ?? ""];
+        })
+      ]));
+    });
+  });
+
+program
+  .command("history")
+  .description("Show the append-only behavioral baseline promotion history")
+  .option("-b, --baseline <name>", "show one baseline only")
+  .option("--json", "print history as JSON")
+  .action(async (options: { baseline?: string; json?: boolean }) => {
+    await withCliErrors(async () => {
+      const events = await listPromotionHistory(process.cwd(), options.baseline);
+      if (options.json) {
+        console.log(JSON.stringify(events, null, 2));
+        return;
+      }
+      if (events.length === 0) {
+        console.log("No baseline promotion history found.");
+        return;
+      }
+      console.log(formatTable([
+        ["Promoted", "Baseline", "Project", "Run ID", "Previous", "Actor", "Reason"],
+        ...events.map((event) => [event.promotedAt, event.name, event.project, event.runId, event.previousRunId ?? "", event.actor ?? "", event.reason ?? ""])
+      ]));
     });
   });
 

@@ -24,11 +24,33 @@ export type ToolViolation = {
   message: string;
 };
 
+export type RunProvenance = {
+  promptdiffVersion: string;
+  configPath?: string;
+  git?: {
+    commit?: string;
+    branch?: string;
+    dirty?: boolean;
+  };
+  ci?: {
+    provider: "github-actions";
+    runId?: string;
+    job?: string;
+    event?: string;
+    ref?: string;
+    commit?: string;
+    pullRequest?: string;
+  };
+};
+
 export type RunArtifact = {
+  /** Artifact schema version. Missing means a v0.1/v0.2 artifact. */
+  schemaVersion?: 1;
   runId: string;
   project: string;
   createdAt: string;
   provider: { type: string; model?: string; temperature?: number };
+  provenance?: RunProvenance;
   target?: {
     kind: "prompt" | "agent";
     label: string;

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { getArtifactTarget, type RunArtifact } from "./types.js";
+import { readBaseline } from "../baselines/registry.js";
 
 export type ResolvedRun = {
   artifact: RunArtifact;
@@ -14,6 +15,14 @@ export async function readRun(runPath: string): Promise<RunArtifact> {
 }
 
 export async function resolveRun(ref: string, artifactRoot = process.cwd()): Promise<ResolvedRun> {
+  if (ref.startsWith("baseline:")) {
+    const baseline = await readBaseline(ref.slice("baseline:".length), artifactRoot);
+    return {
+      artifact: baseline.artifact,
+      path: path.join(artifactRoot, ".promptdiff", "baselines", `${baseline.name}.json`)
+    };
+  }
+
   const runs = await listRuns(artifactRoot);
   if (runs.length === 0) {
     throw new Error(`No run artifacts found under ${path.join(artifactRoot, ".promptdiff", "runs")}`);

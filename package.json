@@ -1,7 +1,7 @@
 {
   "name": "promptdiff",
-  "version": "0.2.0",
-  "description": "Behavioral diffs and regression gates for prompts and agents.",
+  "version": "0.3.0",
+  "description": "Behavioral version control and release gates for prompts and agents.",
   "type": "module",
   "bin": {
     "promptdiff": "./dist/cli.js"
@@ -31,7 +31,10 @@
     "agents",
     "agent-evaluation",
     "llmops",
-    "observability"
+    "observability",
+    "version-control",
+    "agent-governance",
+    "behavioral-testing"
   ],
   "license": "MIT",
   "dependencies": {
