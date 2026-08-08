@@ -4,6 +4,8 @@ import type { RunDiff } from "./diffRuns.js";
 
 export type ReportOptions = {
   maxRegressions?: number;
+  /** Optional traffic assumption. Used only for a clearly labelled cost projection. */
+  projectedCalls?: number;
 };
 
 /**
@@ -27,6 +29,8 @@ export function formatReport(
 
   const leftTarget = getArtifactTarget(left);
   const rightTarget = getArtifactTarget(right);
+  const leftUsage = summarizeUsage(left);
+  const rightUsage = summarizeUsage(right);
 
   const leftCases = new Map(left.cases.map((testCase) => [testCase.id, testCase]));
   const rightCases = new Map(right.cases.map((testCase) => [testCase.id, testCase]));
@@ -34,9 +38,8 @@ export function formatReport(
   const changedCaseIds = orderedChangedCaseIds(diff, left, right);
 
   const verdict = blocked
-    ? `<div class="verdict bad"><span class="dot"></span> Blocked · ${diff.regressionCount} regression${diff.regressionCount === 1 ? "" : "s"}</div>`
-    : `<div class="verdict good"><span class="dot"></span> Safe to ship · ${diff.regressionCount} regression${diff.regressionCount === 1 ? "" : "s"}</div>`;
-
+    ? `<div class="verdict bad"><span class="dot"></span><span><small>Promotion decision</small>Block promotion &middot; ${diff.regressionCount} regression${diff.regressionCount === 1 ? "" : "s"}</span></div>`
+    : `<div class="verdict good"><span class="dot"></span><span><small>Promotion decision</small>Promotion allowed &middot; within max ${maxRegressions}</span></div>`;
   const body = `
   <header class="masthead">
     <div>
@@ -88,6 +91,8 @@ export function formatReport(
     </div>
   </section>
 
+  ${usageSummarySection(leftUsage, rightUsage, options.projectedCalls)}
+
   <section>
     <h2 class="eyebrow">Case outcomes</h2>
     <div class="chip-row" style="margin-bottom:12px">
@@ -110,7 +115,7 @@ export function formatReport(
   </section>
 
   <footer>
-    <span class="local"><span class="dot"></span> Generated locally &mdash; no data left this machine</span>
+    <span class="local"><span class="dot"></span> Self-contained report &mdash; no external assets</span>
     <span class="spacer"></span>
     <span class="mono">provider: ${esc(right.provider.type)}</span>
   </footer>`;
@@ -132,6 +137,107 @@ ${body}
 `;
 }
 
+type UsageSummary = {
+  totalCases: number;
+  reportedCases: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+};
+
+function summarizeUsage(artifact: RunArtifact): UsageSummary {
+  let reportedCases = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let costUsd = 0;
+  let hasInput = false;
+  let hasOutput = false;
+  let hasCost = false;
+
+  for (const testCase of artifact.cases) {
+    const usage = testCase.usage;
+    if (!usage) continue;
+    reportedCases += 1;
+    if (typeof usage.inputTokens === "number") { inputTokens += usage.inputTokens; hasInput = true; }
+    if (typeof usage.outputTokens === "number") { outputTokens += usage.outputTokens; hasOutput = true; }
+    if (typeof usage.costUsd === "number") { costUsd += usage.costUsd; hasCost = true; }
+  }
+
+  return {
+    totalCases: artifact.cases.length,
+    reportedCases,
+    inputTokens: hasInput ? inputTokens : undefined,
+    outputTokens: hasOutput ? outputTokens : undefined,
+    costUsd: hasCost ? costUsd : undefined
+  };
+}
+
+function usageSummarySection(left: UsageSummary, right: UsageSummary, projectedCalls?: number): string {
+  const coverage = `Usage reported for ${left.reportedCases}/${left.totalCases} baseline cases and ${right.reportedCases}/${right.totalCases} candidate cases.`;
+  const projection = typeof projectedCalls === "number" && projectedCalls > 0
+    ? `<div class="tile scenario">
+        <span class="k">Scenario estimate</span>
+        <span class="v">${metricPair(
+          left.costUsd === undefined ? undefined : left.costUsd * projectedCalls,
+          right.costUsd === undefined ? undefined : right.costUsd * projectedCalls,
+          money
+        )}</span>
+        <span class="delta flat">${formatInteger(projectedCalls)} equivalent runs &middot; explicit assumption</span>
+      </div>`
+    : "";
+
+  return `<section class="economics">
+    <div class="section-title-row">
+      <h2 class="eyebrow">Measured usage and cost</h2>
+      <span class="coverage">${esc(coverage)}</span>
+    </div>
+    <div class="tiles usage-tiles">
+      <div class="tile">
+        <span class="k">Input tokens / run</span>
+        <span class="v">${metricPair(left.inputTokens, right.inputTokens, formatInteger)}</span>
+        <span class="delta flat">${deltaText(left.inputTokens, right.inputTokens, formatInteger)}</span>
+      </div>
+      <div class="tile">
+        <span class="k">Output tokens / run</span>
+        <span class="v">${metricPair(left.outputTokens, right.outputTokens, formatInteger)}</span>
+        <span class="delta flat">${deltaText(left.outputTokens, right.outputTokens, formatInteger)}</span>
+      </div>
+      <div class="tile">
+        <span class="k">Measured cost / run</span>
+        <span class="v">${metricPair(left.costUsd, right.costUsd, money)}</span>
+        <span class="delta ${costTone(left.costUsd, right.costUsd)}">${deltaText(left.costUsd, right.costUsd, money)}</span>
+      </div>
+      ${projection}
+    </div>
+    ${projectedCalls ? "" : `<p class="assumption">No traffic projection shown. Add <code>--projected-calls</code> to model an explicitly labelled scenario.</p>`}
+  </section>`;
+}
+
+function metricPair(left: number | undefined, right: number | undefined, format: (value: number) => string): string {
+  if (left === undefined || right === undefined) return `<span class="unavailable">not recorded</span>`;
+  return `<span class="from">${format(left)}</span> &rarr; <span>${format(right)}</span>`;
+}
+
+function deltaText(left: number | undefined, right: number | undefined, format: (value: number) => string): string {
+  if (left === undefined || right === undefined) return "No comparable usage data";
+  const delta = right - left;
+  return `${delta >= 0 ? "+" : ""}${format(delta)} change`;
+}
+
+function costTone(left?: number, right?: number): "up" | "down" | "flat" {
+  if (left === undefined || right === undefined || left === right) return "flat";
+  return right < left ? "up" : "down";
+}
+
+function formatInteger(value: number): string {
+  return Math.round(value).toLocaleString("en-US");
+}
+
+function money(value: number): string {
+  const absolute = Math.abs(value);
+  const digits = absolute === 0 ? 2 : absolute < 0.01 ? 6 : absolute < 1 ? 4 : 2;
+  return `${value < 0 ? "-" : ""}$${absolute.toFixed(digits)}`;
+}
 function orderedChangedCaseIds(diff: RunDiff, left: RunArtifact, right: RunArtifact): string[] {
   const changed = new Set<string>([
     ...diff.newlyPassing,
@@ -408,6 +514,7 @@ body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
 .verdict.good{background:var(--good-soft);color:var(--good);border:1px solid var(--good-line)}
 .verdict.bad{background:var(--bad-soft);color:var(--bad);border:1px solid var(--bad-line)}
 .verdict .dot{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 4px color-mix(in srgb,currentColor 22%,transparent)}
+.verdict small{display:block;font-size:.58rem;line-height:1.2;text-transform:uppercase;letter-spacing:.12em;opacity:.72;margin-bottom:2px}
 .subhead{display:flex;flex-wrap:wrap;gap:6px 20px;margin-top:18px;font-size:.82rem;color:var(--muted)}
 .subhead b{color:var(--ink-soft);font-weight:600}
 .compare{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono);font-size:.82rem;margin-top:22px;padding:7px 13px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);box-shadow:var(--shadow);max-width:100%;overflow-x:auto}
@@ -424,10 +531,12 @@ section{margin-top:40px}
 .tile .v .from{color:var(--muted);font-size:1.05rem;font-weight:600}
 .tile .v .to-up{color:var(--good)}
 .tile .v .to-down{color:var(--bad)}
+.tile .v .unavailable{font-size:1rem;color:var(--muted);font-weight:600}
 .tile .delta{font-size:.78rem;font-weight:650;font-variant-numeric:tabular-nums}
 .delta.up{color:var(--good)}
 .delta.down{color:var(--bad)}
 .delta.flat{color:var(--muted)}
+.section-title-row{display:flex;align-items:end;justify-content:space-between;gap:20px;margin-bottom:16px}.section-title-row .eyebrow{margin:0}.coverage{font-size:.72rem;color:var(--muted);text-align:right}.usage-tiles{grid-template-columns:repeat(auto-fit,minmax(205px,1fr))}.scenario{border-color:var(--accent);background:var(--accent-soft)}.assumption{margin:10px 0 0;color:var(--muted);font-size:.75rem}.assumption code{font-family:var(--mono);color:var(--ink-soft)}
 .bar{height:6px;border-radius:999px;background:var(--surface-2);overflow:hidden;margin-top:8px}
 .bar>i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--good),color-mix(in srgb,var(--good) 60%,var(--accent)));width:var(--fill,0%);animation:grow 1s cubic-bezier(.22,.61,.36,1) both}
 .bar>i.neg{background:linear-gradient(90deg,var(--bad),color-mix(in srgb,var(--bad) 60%,var(--accent)))}
@@ -498,5 +607,5 @@ footer .spacer{margin-left:auto}
 a{color:var(--accent-ink)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 @media (prefers-reduced-motion:reduce){.bar>i{animation:none}}
-@media (max-width:560px){.io,.trace{grid-template-columns:1fr}.trace>div:first-child{border-right:none;border-bottom:1px solid var(--line)}.io{grid-template-columns:1fr}.io>div:first-child{border-right:none;border-bottom:1px solid var(--line)}}
+@media (max-width:560px){.section-title-row{align-items:flex-start;flex-direction:column}.coverage{text-align:left}.io,.trace{grid-template-columns:1fr}.trace>div:first-child{border-right:none;border-bottom:1px solid var(--line)}.io{grid-template-columns:1fr}.io>div:first-child{border-right:none;border-bottom:1px solid var(--line)}}
 `;

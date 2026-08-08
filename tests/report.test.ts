@@ -5,7 +5,7 @@ import type { RunArtifact } from "../src/artifacts/types.js";
 import { agentArtifact, traceStep } from "./fixtures.js";
 
 describe("formatReport", () => {
-  it("renders a self-contained report that reads Safe to ship when no regressions", () => {
+  it("renders a self-contained report that reads Promotion allowed when no regressions", () => {
     const left = artifact("base", "baseline", [["greeting", false]]);
     const right = artifact("cand", "candidate", [["greeting", true]]);
 
@@ -13,7 +13,7 @@ describe("formatReport", () => {
 
     expect(html.startsWith("<!doctype html>")).toBe(true);
     expect(html).toContain("<style>");
-    expect(html).toContain("Safe to ship");
+    expect(html).toContain("Promotion allowed");
     expect(html).toContain("now passing");
     expect(html).toContain("greeting");
     // no unresolved template placeholders leaked into the output
@@ -27,7 +27,7 @@ describe("formatReport", () => {
 
     const html = formatReport(diffRuns(left, right), left, right, { maxRegressions: 0 });
 
-    expect(html).toContain("Blocked");
+    expect(html).toContain("Block promotion");
     expect(html).toContain("now failing");
   });
 
@@ -81,6 +81,37 @@ describe("formatReport", () => {
 
     expect(html).toContain("undeclared_tool");
     expect(html).toContain("not declared");
+  });
+
+  it("renders measured usage, cost, and an explicitly labelled projection", () => {
+    const left = artifact("base", "baseline", [["refund", true]]);
+    const right = artifact("cand", "candidate", [["refund", false]]);
+    left.cases[0].usage = { inputTokens: 740, outputTokens: 310, costUsd: 0.004 };
+    right.cases[0].usage = { inputTokens: 1120, outputTokens: 280, costUsd: 0.006 };
+
+    const html = formatReport(diffRuns(left, right), left, right, { projectedCalls: 100_000 });
+
+    expect(html).toContain("Measured usage and cost");
+    expect(html).toContain("740");
+    expect(html).toContain("1,120");
+    expect(html).toContain("$0.004000");
+    expect(html).toContain("$0.006000");
+    expect(html).toContain("$400.00");
+    expect(html).toContain("$600.00");
+    expect(html).toContain("100,000 equivalent runs");
+    expect(html).toContain("explicit assumption");
+  });
+
+  it("does not manufacture zero usage when a provider did not record it", () => {
+    const left = artifact("base", "baseline", [["greeting", true]]);
+    const right = artifact("cand", "candidate", [["greeting", true]]);
+
+    const html = formatReport(diffRuns(left, right), left, right);
+
+    expect(html).toContain("not recorded");
+    expect(html).toContain("Usage reported for 0/1 baseline cases and 0/1 candidate cases.");
+    expect(html).toContain("No traffic projection shown");
+    expect(html).not.toContain("Scenario estimate");
   });
 
   it("escapes HTML in case outputs so they cannot break the markup", () => {

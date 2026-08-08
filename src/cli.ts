@@ -93,15 +93,17 @@ program
   .argument("<right>", "right run ID, file path, target label, latest, or previous")
   .option("-o, --output <path>", "output HTML file path", "promptdiff-report.html")
   .option("--max-regressions <count>", "allowed regression count before the report reads Blocked", parseInteger, 0)
+  .option("--projected-calls <count>", "show an explicitly labelled cost projection for this many equivalent runs", parsePositiveInteger)
   .option("--gate-tool-drift", "count added/removed tools and new violations as regressions", false)
   .option("--gate-call-deltas", "count tool call-count changes as regressions", false)
-  .action(async (leftRef: string, rightRef: string, options: { output: string; maxRegressions: number; gateToolDrift: boolean; gateCallDeltas: boolean }) => {
+  .action(async (leftRef: string, rightRef: string, options: { output: string; maxRegressions: number; projectedCalls?: number; gateToolDrift: boolean; gateCallDeltas: boolean }) => {
     await withCliErrors(async () => {
       const left = await resolveRun(leftRef);
       const right = await resolveRun(rightRef);
       const diff = diffRuns(left.artifact, right.artifact, { gateToolDrift: options.gateToolDrift, gateCallDeltas: options.gateCallDeltas });
       const html = formatReport(diff, left.artifact, right.artifact, {
-        maxRegressions: options.maxRegressions
+        maxRegressions: options.maxRegressions,
+        projectedCalls: options.projectedCalls
       });
 
       await writeFile(options.output, html, "utf8");
@@ -348,6 +350,12 @@ function parseInteger(value: string): number {
   if (!Number.isFinite(parsed) || parsed < 0) {
     throw new Error(`Expected a non-negative integer, received ${value}`);
   }
+  return parsed;
+}
+
+function parsePositiveInteger(value: string): number {
+  const parsed = parseInteger(value);
+  if (parsed === 0) throw new Error(`Expected a positive integer, received ${value}`);
   return parsed;
 }
 

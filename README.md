@@ -79,7 +79,10 @@ Copy `.env.example` to `.env`, add your key, and run Node with the env file:
 node --env-file=.env dist/cli.js run -c examples/openrouter-comparison/promptdiff.config.yml -t baseline
 node --env-file=.env dist/cli.js run -c examples/openrouter-comparison/promptdiff.config.yml -t candidate
 node dist/cli.js diff previous latest
+node --env-file=.env dist/cli.js report previous latest --projected-calls 100000
 ~~~
+
+The HTML report totals the usage actually recorded by each case. It shows missing data as `not recorded`, never as zero. `--projected-calls` is optional: when supplied, its result is labelled as a scenario estimate rather than measured spend.
 
 See [the complete OpenRouter example](examples/openrouter-comparison/README.md). For a meaningful regression baseline, use an explicit model slug. `openrouter/free` is useful for zero-cost exploration but routes randomly among available free models, so it does not hold model identity constant.
 
