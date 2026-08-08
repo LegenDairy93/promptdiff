@@ -16,7 +16,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:package": "node scripts/accept-package.mjs"
   },
   "keywords": [
     "prompts",

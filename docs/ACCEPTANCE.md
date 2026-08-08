@@ -4,12 +4,22 @@ This file is the release gate for calling PromptDiff a complete portfolio produc
 
 ## Verified baseline — 2026-08-09
 
-- `npm test`: 78 tests pass.
+- Original baseline: `npm test` passed 78 tests before product expansion.
+- Current checkpoint: 84 tests pass, including HTTP workflows, trace imports, and model-path diffs.
 - `npm run build`: TypeScript build passes.
 - `npm pack --dry-run`: the CLI, documentation, and examples are included.
 - `apps/web npm test`: build and one server-rendered HTML check pass.
 - The hosted web path has not proved real model execution. Its reference sample must never be presented as a live result.
 
+## Evidence ledger
+
+| Gate | Status | Current evidence |
+|---|---|---|
+| PD-01 | Pass | `npm run test:package` builds a tarball, installs it in a new temp project, opens the installed CLI, runs two shipped targets, diffs them, and creates an HTML report. |
+| PD-02 | Pass | All 78 baseline tests remain green; the additive target schemas bring the suite to 84 tests. |
+| PD-05 | Pass | `tests/http.test.ts` proves request/body mapping, environment-backed authorization, response/trace/usage mapping, tool assertions, and bounded timeout failure. |
+| PD-06 | Pass | `tests/traceImport.test.ts` proves JSON envelope and JSONL loop import, assertions, usage, per-step models, and source-content identity changes. |
+| PD-07 | Pass | Model provider/identity is retained per trace step and `tests/diff.test.ts` proves a model substitution is reported when output is identical. |
 ## Required gates
 
 | ID | Requirement | Required evidence |
