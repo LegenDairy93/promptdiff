@@ -1,0 +1,4 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+async function render(){const url=new URL("../dist/server/index.js",import.meta.url);url.searchParams.set("test",`${Date.now()}`);const{default:worker}=await import(url.href);return worker.fetch(new Request("http://localhost/",{headers:{accept:"text/html"}}),{ASSETS:{fetch:async()=>new Response("Not found",{status:404})}},{waitUntil(){},passThroughOnException(){}})}
+test("renders the PromptDiff product surface",async()=>{const response=await render();assert.equal(response.status,200);const html=await response.text();assert.match(html,/PromptDiff/);assert.match(html,/See what changed/);assert.match(html,/Gate what ships/);assert.doesNotMatch(html,/codex-preview|loading skeleton/i)});

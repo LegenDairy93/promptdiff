@@ -1,0 +1,2 @@
+import { configured, freeModels } from "../../../lib/openrouter";
+export async function GET(){if(!configured())return Response.json({configured:false,models:[]},{status:503}); try{return Response.json({configured:true,models:await freeModels()},{headers:{"Cache-Control":"public, max-age=120"}})}catch(error){return Response.json({configured:true,models:[],error:error instanceof Error?error.message:"Model discovery failed"},{status:502})}}
