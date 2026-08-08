@@ -1,0 +1,35 @@
+project: openrouter-change-review
+
+targets:
+  baseline:
+    kind: prompt
+    file: prompt-v1.md
+    provider:
+      type: openrouter
+      model: openrouter/auto-beta
+      temperature: 0
+
+  candidate:
+    kind: prompt
+    file: prompt-v2.md
+    provider:
+      type: openrouter
+      model: openrouter/auto-beta
+      temperature: 0
+
+cases:
+  - id: damaged-order
+    input: My order arrived damaged. What should I do?
+    assertions:
+      - type: contains
+        value: photo
+      - type: max_length
+        value: 900
+
+  - id: late-return
+    input: I want to return an unopened item after 45 days.
+    assertions:
+      - type: contains
+        value: policy
+      - type: not_contains
+        value: guaranteed refund

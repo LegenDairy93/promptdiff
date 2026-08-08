@@ -23,7 +23,8 @@ export async function runSuite(loadedConfig: LoadedConfig, options: RunSuiteOpti
   if (!targetConfig) throw new Error(`Target "${targetLabel}" is not configured. Available targets: ${Object.keys(targets).join(", ")}`);
 
   const resolved: ResolvedTarget = { label: targetLabel, config: targetConfig };
-  const provider = targetConfig.kind === "prompt" ? createProvider(config.provider) : undefined;
+  const providerConfig = targetConfig.kind === "prompt" ? targetConfig.provider ?? config.provider : undefined;
+  const provider = providerConfig ? createProvider(providerConfig) : undefined;
   const promptPath = targetConfig.kind === "prompt" ? path.resolve(loadedConfig.rootDir, targetConfig.file) : undefined;
   const instructionsPath = targetConfig.kind === "agent" && targetConfig.instructions ? path.resolve(loadedConfig.rootDir, targetConfig.instructions) : undefined;
   const instructions = instructionsPath ? await readFile(instructionsPath, "utf8") : undefined;
@@ -32,7 +33,7 @@ export async function runSuite(loadedConfig: LoadedConfig, options: RunSuiteOpti
 
   for (const testCase of config.cases) {
     const result = resolved.config.kind === "prompt"
-      ? await provider!.run({ prompt: renderPrompt(prompt!, testCase), input: testCase.input, variables: testCase.variables, model: config.provider.model, temperature: config.provider.temperature })
+      ? await provider!.run({ prompt: renderPrompt(prompt!, testCase), input: testCase.input, variables: testCase.variables, model: providerConfig?.model, temperature: providerConfig?.temperature })
       : await runAgentCommand({ command: resolved.config.command, cwd: loadedConfig.rootDir, timeoutMs: resolved.config.timeout_ms, label: resolved.label, instructions, tools: resolved.config.tools, testCase });
     const output = "text" in result ? result.text : result.output;
     // Trace and violations must exist before assertions run — trace assertions read them.
@@ -56,7 +57,7 @@ export async function runSuite(loadedConfig: LoadedConfig, options: RunSuiteOpti
     schemaVersion: 1,
     runId: createRunId(), project: config.project, createdAt: new Date().toISOString(),
     provenance: await collectProvenance({ cwd: loadedConfig.rootDir, configPath: loadedConfig.path, artifactRoot }),
-    provider: targetConfig.kind === "prompt" ? { type: config.provider.type, model: config.provider.model, temperature: config.provider.temperature } : { type: "command" },
+    provider: targetConfig.kind === "prompt" ? { type: config.provider.type, model: providerConfig?.model, temperature: providerConfig?.temperature } : { type: "command" },
     target: {
       kind: targetConfig.kind, label: targetLabel,
       path: toPortablePath(path.relative(options.artifactRoot ?? process.cwd(), (promptPath ?? instructionsPath) || loadedConfig.path)),

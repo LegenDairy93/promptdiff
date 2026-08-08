@@ -15,7 +15,7 @@ describe("run provenance", () => {
       configPath: path.join(root, "config", "promptdiff.config.yml")
     });
 
-    expect(provenance.promptdiffVersion).toBe("0.3.0");
+    expect(provenance.promptdiffVersion).toBe("0.4.0");
     expect(provenance.configPath).toBe("config/promptdiff.config.yml");
     expect(provenance.git).toBeUndefined();
   });

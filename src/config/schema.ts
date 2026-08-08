@@ -82,7 +82,11 @@ export const toolDeclarationSchema = z.preprocess(
 );
 
 const targetSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("prompt"), file: z.string().min(1) }),
+  z.object({
+    kind: z.literal("prompt"),
+    file: z.string().min(1),
+    provider: providerConfigSchema.optional()
+  }),
   z.object({
     kind: z.literal("agent"),
     command: z.array(z.string().min(1)).min(1),

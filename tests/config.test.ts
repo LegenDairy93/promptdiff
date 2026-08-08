@@ -83,6 +83,40 @@ cases:
     });
   });
 
+  it("accepts target-specific provider settings", async () => {
+    const loaded = await loadConfig(await writeConfig(`project: demo
+targets:
+  baseline:
+    kind: prompt
+    file: prompt-v1.md
+    provider:
+      type: openrouter
+      model: model/a
+      temperature: 0
+  candidate:
+    kind: prompt
+    file: prompt-v2.md
+    provider:
+      type: openrouter
+      model: model/b
+cases:
+  - id: one
+    input: hello
+    assertions:
+      - type: contains
+        value: hello
+`));
+
+    expect(loaded.config.targets?.baseline).toMatchObject({
+      kind: "prompt",
+      provider: { type: "openrouter", model: "model/a", temperature: 0 }
+    });
+    expect(loaded.config.targets?.candidate).toMatchObject({
+      kind: "prompt",
+      provider: { type: "openrouter", model: "model/b" }
+    });
+  });
+
   it("rejects duplicate tool names", async () => {
     await expect(loadConfig(await writeConfig(`project: demo
 targets:

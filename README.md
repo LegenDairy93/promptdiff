@@ -50,6 +50,39 @@ node dist/cli.js report prompt-baseline agent-candidate -o promptdiff-report.htm
 
 The demo is deterministic and offline. The agent is a real local command target; it reads a case as JSON and returns a final output plus an ordered trace.
 
+## Run Live Comparisons through OpenRouter
+
+PromptDiff can run each prompt target through OpenRouter and keep the returned token and cost data in the run artifact. Provider settings can live on each target, so one change review may compare prompt A/model A with prompt B/model B against the same cases.
+
+~~~yaml
+targets:
+  baseline:
+    kind: prompt
+    file: prompt-v1.md
+    provider:
+      type: openrouter
+      model: openrouter/auto-beta
+      temperature: 0
+
+  candidate:
+    kind: prompt
+    file: prompt-v2.md
+    provider:
+      type: openrouter
+      model: openrouter/auto-beta
+      temperature: 0
+~~~
+
+Copy `.env.example` to `.env`, add your key, and run Node with the env file:
+
+~~~bash
+node --env-file=.env dist/cli.js run -c examples/openrouter-comparison/promptdiff.config.yml -t baseline
+node --env-file=.env dist/cli.js run -c examples/openrouter-comparison/promptdiff.config.yml -t candidate
+node dist/cli.js diff previous latest
+~~~
+
+See [the complete OpenRouter example](examples/openrouter-comparison/README.md). For a meaningful regression baseline, use an explicit model slug. `openrouter/free` is useful for zero-cost exploration but routes randomly among available free models, so it does not hold model identity constant.
+
 ## Approve and Reuse a Behavioral Baseline
 
 A passing run is not automatically approved behavior. Promote it deliberately, record why, and compare future candidates against the named snapshot:
