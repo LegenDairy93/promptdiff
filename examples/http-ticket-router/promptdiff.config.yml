@@ -1,0 +1,43 @@
+project: http-ticket-router
+
+targets:
+  baseline:
+    kind: http
+    url: http://127.0.0.1:4319/baseline
+    body:
+      message: "{{input}}"
+    response:
+      output_path: result
+
+  candidate:
+    kind: http
+    url: http://127.0.0.1:4319/candidate
+    body:
+      message: "{{input}}"
+    response:
+      output_path: result
+
+cases:
+  - id: duplicate-charge
+    input: I was charged twice for one subscription.
+    assertions:
+      - type: json_schema
+        schema:
+          type: object
+          required: [category, priority, reason]
+          properties:
+            category: { type: string }
+            priority: { enum: [low, medium, high] }
+            reason: { type: string }
+
+  - id: password-reset
+    input: I cannot reset my password.
+    assertions:
+      - type: json_schema
+        schema:
+          type: object
+          required: [category, priority, reason]
+          properties:
+            category: { type: string }
+            priority: { enum: [low, medium, high] }
+            reason: { type: string }

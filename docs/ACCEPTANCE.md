@@ -5,7 +5,7 @@ This file is the release gate for calling PromptDiff a complete portfolio produc
 ## Verified baseline — 2026-08-09
 
 - Original baseline: `npm test` passed 78 tests before product expansion.
-- Current checkpoint: 84 tests pass, including HTTP workflows, trace imports, and model-path diffs.
+- Current checkpoint: 84 tests pass, including HTTP workflows, trace imports, and model-path diffs; three distinct example paths also pass end to end.
 - `npm run build`: TypeScript build passes.
 - `npm pack --dry-run`: the CLI, documentation, and examples are included.
 - `apps/web npm test`: build and one server-rendered HTML check pass.
@@ -20,6 +20,7 @@ This file is the release gate for calling PromptDiff a complete portfolio produc
 | PD-05 | Pass | `tests/http.test.ts` proves request/body mapping, environment-backed authorization, response/trace/usage mapping, tool assertions, and bounded timeout failure. |
 | PD-06 | Pass | `tests/traceImport.test.ts` proves JSON envelope and JSONL loop import, assertions, usage, per-step models, and source-content identity changes. |
 | PD-07 | Pass | Model provider/identity is retained per trace step and `tests/diff.test.ts` proves a model substitution is reported when output is identical. |
+| PD-08 | Pass | End-to-end runs pass for the HTTP ticket router, captured multi-model JSONL loop, and existing prompt-to-command-agent example. |
 ## Required gates
 
 | ID | Requirement | Required evidence |

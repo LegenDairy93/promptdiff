@@ -1,0 +1,4 @@
+{"type":"model","name":"planner","provider":"openrouter","model":"planner-small","output":"search first"}
+{"type":"tool","name":"search","input":{"query":"release evidence"},"output":"source found"}
+{"type":"model","name":"writer","provider":"openrouter","model":"writer-v1","output":"compose cited answer"}
+{"type":"final","output":"A cited answer based on the source."}

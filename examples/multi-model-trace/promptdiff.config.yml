@@ -1,0 +1,19 @@
+project: multi-model-loop
+
+targets:
+  baseline:
+    kind: trace
+    file: traces/baseline-{{case.id}}.jsonl
+    tools: [search]
+  candidate:
+    kind: trace
+    file: traces/candidate-{{case.id}}.jsonl
+    tools: [search]
+
+cases:
+  - id: research-answer
+    input: Explain the evidence behind the change.
+    assertions:
+      - { type: contains, value: cited }
+      - { type: tool_called, name: search }
+      - { type: max_steps, value: 4 }
