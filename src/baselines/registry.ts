@@ -124,9 +124,10 @@ export async function listPromotionHistory(
     }
   });
   const name = baselineName ? validateBaselineName(baselineName) : undefined;
+  // The JSONL append order is authoritative. Timestamps can collide within one millisecond.
   return events
     .filter((event) => event.type === "baseline_promoted" && (!name || event.name === name))
-    .sort((left, right) => right.promotedAt.localeCompare(left.promotedAt));
+    .reverse();
 }
 
 export function validateBaselineName(name: string): string {
