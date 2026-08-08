@@ -54,7 +54,7 @@ export type RunArtifact = {
   provider: { type: string; model?: string; temperature?: number };
   provenance?: RunProvenance;
   target?: {
-    kind: "prompt" | "agent" | "http";
+    kind: "prompt" | "agent" | "http" | "trace";
     label: string;
     path?: string;
     sha256: string;

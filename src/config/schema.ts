@@ -111,6 +111,17 @@ const targetSchema = z.discriminatedUnion("kind", [
     }).default({ output_path: "output" }),
     tools: toolsSchema,
     timeout_ms: z.number().int().positive().default(30_000)
+  }),
+  z.object({
+    kind: z.literal("trace"),
+    file: z.string().min(1),
+    format: z.enum(["auto", "json", "jsonl"]).default("auto"),
+    response: z.object({
+      output_path: z.string().default("output"),
+      trace_path: z.string().default("trace"),
+      usage_path: z.string().optional()
+    }).default({ output_path: "output", trace_path: "trace" }),
+    tools: toolsSchema
   })
 ]);
 
