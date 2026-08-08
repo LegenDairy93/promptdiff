@@ -10,9 +10,8 @@ node examples/http-ticket-router/server.mjs
 
 # terminal 2, from the repository root
 node dist/cli.js run -c examples/http-ticket-router/promptdiff.config.yml -t baseline
-node dist/cli.js run -c examples/http-ticket-router/promptdiff.config.yml -t candidate
-node dist/cli.js diff previous latest
-node dist/cli.js report previous latest -o ticket-router-report.html
+node dist/cli.js promote latest --baseline production
+node dist/cli.js check -c examples/http-ticket-router/promptdiff.config.yml -t candidate --baseline production -o ticket-router-report.html
 ```
 
 The server is deliberately deterministic so the example tests HTTP mapping rather than model quality. Replace either URL with your own staging endpoint; use `${ENV:NAME}` inside headers to read credentials from the environment without writing them into artifacts.

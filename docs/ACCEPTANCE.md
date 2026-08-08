@@ -22,6 +22,10 @@ This file is the release gate for calling PromptDiff a complete portfolio produc
 | PD-06 | Pass | `tests/traceImport.test.ts` proves JSON envelope and JSONL loop import, assertions, usage, per-step models, and source-content identity changes. |
 | PD-07 | Pass | Model provider/identity is retained per trace step and `tests/diff.test.ts` proves a model substitution is reported when output is identical. |
 | PD-08 | Pass | End-to-end runs pass for the HTTP ticket router, captured multi-model JSONL loop, and existing prompt-to-command-agent example. |
+| PD-09 | Pass | Clean-package acceptance promotes a named baseline, runs `check`, resolves `baseline:production`, verifies promotion history, produces reports for allowed and blocked reviews, and verifies exit codes `0` and `1`. |
+| PD-11 | Pass | `.github/workflows/ci.yml` runs the baseline/check loop, writes the terminal verdict to the GitHub job summary, preserves the HTML report with `if: always()`, and propagates the gate exit code. |
+| PD-14 | Pass | README has separate runnable entry paths for prompt/model, framework-neutral HTTP workflow, and executable/imported agent or multi-model traces. |
+| PD-15 | Pass | README positions Promptfoo as the broader eval/red-team matrix and limits PromptDiff's claim to the before/after promotion and release-review loop. |
 ## Required gates
 
 | ID | Requirement | Required evidence |

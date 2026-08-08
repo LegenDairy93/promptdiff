@@ -87,6 +87,51 @@ program
   });
 
 program
+  .command("check")
+  .description("Run a candidate and gate it against an approved behavioral baseline")
+  .option("-c, --config <path>", "config file path", "promptdiff.config.yml")
+  .option("-t, --target <label>", "candidate target to run")
+  .option("-b, --baseline <name>", "approved baseline name", "production")
+  .option("-o, --output <path>", "output HTML report path", "promptdiff-report.html")
+  .option("--max-regressions <count>", "allowed regression count before exit 1", parseInteger, 0)
+  .option("--projected-calls <count>", "show an explicitly labelled cost projection", parsePositiveInteger)
+  .option("--gate-tool-drift", "gate added/removed tools and new violations", false)
+  .option("--gate-call-deltas", "gate tool call-count changes", false)
+  .action(async (options: {
+    config: string;
+    target?: string;
+    baseline: string;
+    output: string;
+    maxRegressions: number;
+    projectedCalls?: number;
+    gateToolDrift: boolean;
+    gateCallDeltas: boolean;
+  }) => {
+    await withCliErrors(async () => {
+      const loaded = await loadConfig(options.config);
+      const baseline = await resolveRun(`baseline:${options.baseline}`);
+      if (baseline.artifact.project !== loaded.config.project) {
+        throw new Error(`Baseline "${options.baseline}" belongs to project ${baseline.artifact.project}, not ${loaded.config.project}`);
+      }
+      const candidate = await runSuite(loaded, { targetLabel: options.target });
+      const diff = diffRuns(baseline.artifact, candidate.artifact, {
+        gateToolDrift: options.gateToolDrift,
+        gateCallDeltas: options.gateCallDeltas
+      });
+      const html = formatReport(diff, baseline.artifact, candidate.artifact, {
+        maxRegressions: options.maxRegressions,
+        projectedCalls: options.projectedCalls
+      });
+      await writeFile(options.output, html, "utf8");
+      console.log(formatDiff(diff));
+      const hint = ungatedToolHint(diff, options);
+      if (hint) console.log(hint);
+      console.log(`Candidate run: ${candidate.artifact.runId}`);
+      console.log(`Wrote report to ${path.relative(process.cwd(), path.resolve(options.output))}`);
+      if (diff.regressionCount > options.maxRegressions) process.exitCode = 1;
+    });
+  });
+program
   .command("report")
   .description("Write a self-contained HTML diff report from two run artifacts")
   .argument("<left>", "left run ID, file path, target label, latest, or previous")

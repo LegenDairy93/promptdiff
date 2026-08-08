@@ -6,9 +6,8 @@ The candidate changes the writer model while keeping the final text identical. P
 
 ```bash
 node dist/cli.js run -c examples/multi-model-trace/promptdiff.config.yml -t baseline
-node dist/cli.js run -c examples/multi-model-trace/promptdiff.config.yml -t candidate
-node dist/cli.js diff previous latest
-node dist/cli.js report previous latest -o multi-model-report.html
+node dist/cli.js promote latest --baseline production
+node dist/cli.js check -c examples/multi-model-trace/promptdiff.config.yml -t candidate --baseline production -o multi-model-report.html
 ```
 
 Use per-case files with `{{case.id}}`, or import a JSON envelope with `output`, `trace`, and optional `usage` paths.

@@ -33,26 +33,46 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Verify packed clean install
+        run: npm run test:package
+
       - name: Smoke test support-bot example
         run: |
           node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt baseline
           node dist/cli.js run --config examples/support-bot/promptdiff.config.yml --prompt candidate
           node dist/cli.js diff baseline latest
 
-      - name: Smoke test prompt-to-agent diff
+      - name: Review candidate against approved baseline
         run: |
           node dist/cli.js run --config examples/prompt-to-agent/promptdiff.config.yml --target prompt-baseline
-          node dist/cli.js run --config examples/prompt-to-agent/promptdiff.config.yml --target agent-candidate
-          node dist/cli.js diff prompt-baseline agent-candidate
+          node dist/cli.js promote latest --baseline production --actor github-actions --reason "Repository baseline target"
           mkdir -p site
-          node dist/cli.js report prompt-baseline agent-candidate --output site/index.html --projected-calls 100000
+          set +e
+          node dist/cli.js check --config examples/prompt-to-agent/promptdiff.config.yml --target agent-candidate --baseline production --output site/index.html --projected-calls 100000 | tee promptdiff-check.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "## PromptDiff behavioral review"
+            echo '```text'
+            cat promptdiff-check.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
       - name: Smoke test json-classifier example
         run: |
           node dist/cli.js run --config examples/json-classifier/promptdiff.config.yml --prompt baseline
           node dist/cli.js run --config examples/json-classifier/promptdiff.config.yml --prompt candidate
           node dist/cli.js diff baseline latest
-      - name: Upload live report
+      - name: Upload behavioral review artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: promptdiff-behavioral-review
+          path: site/index.html
+          if-no-files-found: warn
+
+      - name: Upload deterministic example report to Pages
         if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@v4
         with:

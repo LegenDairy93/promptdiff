@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)](package.json)
 
-**Behavioral version control and release governance for prompts and agents.**
+**Behavioral change control for prompts, AI workflows, agents, and multi-model systems.**
 
 A prompt is one model call. An agent is a program that can reason, call tools, and take several steps. Most eval output makes both look like a final string. `promptdiff` keeps the difference visible and reviews the change:
 
@@ -50,6 +50,44 @@ node dist/cli.js report prompt-baseline agent-candidate -o promptdiff-report.htm
 
 The demo is deterministic and offline. The agent is a real local command target; it reads a case as JSON and returns a final output plus an ordered trace.
 
+## Choose the System You Changed
+
+The product loop is the same in every mode: capture behavior you approve once, promote it to a named baseline, then use one `check` command to run and gate the next candidate. `check` always writes the candidate artifact and self-contained HTML review before returning exit code `0` or `1`.
+
+### I changed a prompt or model
+
+```bash
+promptdiff run -c promptdiff.config.yml -t baseline
+promptdiff promote latest --baseline production --reason "Current approved behavior"
+promptdiff check -c promptdiff.config.yml -t candidate --baseline production
+```
+
+Start with the [structured classification example](examples/json-classifier/README.md), or configure OpenAI, OpenRouter, or any OpenAI-compatible Chat Completions endpoint.
+
+### I changed an AI-powered HTTP workflow
+
+Point two targets at the old and new local or staging endpoints. PromptDiff maps request bodies, headers from environment variables, outputs, traces, and usage without requiring the service to use a particular AI framework.
+
+```bash
+node examples/http-ticket-router/server.mjs
+promptdiff run -c examples/http-ticket-router/promptdiff.config.yml -t baseline
+promptdiff promote latest --baseline production
+promptdiff check -c examples/http-ticket-router/promptdiff.config.yml -t candidate
+```
+
+See the [HTTP ticket-router example](examples/http-ticket-router/README.md).
+
+### I changed an agent or multi-model loop
+
+Run an executable through PromptDiff's small JSON protocol, or import JSON/JSONL traces produced by an existing system. Provider and model identity are retained per response and per model step, so a router or handoff change remains visible even when the final text is identical.
+
+```bash
+promptdiff run -c examples/multi-model-trace/promptdiff.config.yml -t baseline
+promptdiff promote latest --baseline production
+promptdiff check -c examples/multi-model-trace/promptdiff.config.yml -t candidate
+```
+
+See the [command-agent protocol](docs/agent-protocol.md) and [captured multi-model trace example](examples/multi-model-trace/README.md).
 ## Run Live Comparisons through OpenRouter
 
 PromptDiff can run each prompt target through OpenRouter and keep the returned token and cost data in the run artifact. Provider settings can live on each target, so one change review may compare prompt A/model A with prompt B/model B against the same cases.
@@ -86,6 +124,22 @@ The HTML report totals the usage actually recorded by each case. It shows missin
 
 See [the complete OpenRouter example](examples/openrouter-comparison/README.md). For a meaningful regression baseline, use an explicit model slug. `openrouter/free` is useful for zero-cost exploration but routes randomly among available free models, so it does not hold model identity constant.
 
+## OpenAI and OpenAI-Compatible Providers
+
+Use `type: openai` with `OPENAI_API_KEY`, or connect any server that implements the OpenAI Chat Completions request/response shape. Secrets are named in config and read only from the process environment; they are never embedded in artifacts or reports.
+
+```yaml
+provider:
+  type: openai-compatible
+  base_url: https://your-provider.example/v1
+  model: your-model-id
+  api_key_env: PROVIDER_API_KEY
+  timeout_ms: 60000
+  header_env:
+    X-Organization: PROVIDER_ORG
+```
+
+Provider calls have bounded timeouts, redacted error bodies, returned model identity, latency, token usage, and cost when the upstream API reports it.
 ## Approve and Reuse a Behavioral Baseline
 
 A passing run is not automatically approved behavior. Promote it deliberately, record why, and compare future candidates against the named snapshot:
@@ -96,6 +150,7 @@ promptdiff promote latest --baseline production \
   --reason "Approved in PR #42"
 
 promptdiff diff baseline:production latest
+promptdiff check --config promptdiff.config.yml --target candidate --baseline production
 promptdiff report baseline:production latest -o promptdiff-report.html
 promptdiff baselines
 promptdiff history --baseline production
@@ -162,6 +217,7 @@ Artifacts are written to `.promptdiff/runs/*.json`. They stay local and are igno
 ```bash
 promptdiff init
 promptdiff run --config promptdiff.config.yml --target candidate
+promptdiff check --config promptdiff.config.yml --target candidate --baseline production
 promptdiff list
 promptdiff show latest
 promptdiff diff previous latest --max-regressions 0
@@ -181,7 +237,7 @@ promptdiff diff baseline candidate --gate-call-deltas
 Exit codes:
 
 - `0`: command succeeded and the regression threshold was not exceeded
-- `1`: `diff` found more regressions than `--max-regressions` allows
+- `1`: `diff` or `check` found more regressions than `--max-regressions` allows
 - `2`: configuration or runtime error
 
 ## Assertions
@@ -230,17 +286,22 @@ are sorted by severity, so a `write`-effect tool appearing is never buried under
 
 ## CI
 
+The repository's [GitHub Actions workflow](.github/workflows/ci.yml) runs the same product loop used locally: it promotes the checked-in baseline target, checks the candidate, writes the terminal verdict to the GitHub job summary, and uploads the self-contained HTML report even when the gate fails.
+
 ```yaml
-- run: npm ci
-- run: npm run build
-- run: npm test
-- run: node dist/cli.js run -c examples/prompt-to-agent/promptdiff.config.yml -t prompt-baseline
-- run: node dist/cli.js run -c examples/prompt-to-agent/promptdiff.config.yml -t agent-candidate
-- run: node dist/cli.js diff prompt-baseline agent-candidate --max-regressions 0
+- run: node dist/cli.js run -c promptdiff.config.yml -t baseline
+- run: node dist/cli.js promote latest --baseline production --actor github-actions
+- run: node dist/cli.js check -c promptdiff.config.yml -t candidate --baseline production -o promptdiff-report.html
+- uses: actions/upload-artifact@v4
+  if: always()
+  with:
+    name: promptdiff-behavioral-review
+    path: promptdiff-report.html
 ```
 
-## Scope
+`check` creates the candidate artifact and report before exiting `1`, so failed reviews still leave evidence to inspect.
 
+## Scope
 This repository is an early open-source MVP. It has no hosted service, database, authentication, semantic judge, or production observability. The mock provider and example agent are deterministic fixtures for understanding the review workflow, not substitutes for model-quality evaluation.
 
 The roadmap follows the change-control thesis: policy-as-code, deterministic replay, incident-to-regression workflows, GitHub PR annotations, and adapters for common agent runtimes and OpenTelemetry traces.

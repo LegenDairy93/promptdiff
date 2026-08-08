@@ -27,11 +27,19 @@ try {
   const config = path.join(workspace, "node_modules", "promptdiff", "examples", "json-classifier", "promptdiff.config.yml");
   await run(process.execPath, [cli, "--help"], workspace);
   await run(process.execPath, [cli, "run", "-c", config, "-t", "baseline"], workspace);
-  await run(process.execPath, [cli, "run", "-c", config, "-t", "candidate"], workspace);
-  await run(process.execPath, [cli, "diff", "previous", "latest"], workspace);
-  await run(process.execPath, [cli, "report", "previous", "latest", "-o", "report.html"], workspace);
+  await run(process.execPath, [cli, "promote", "latest", "--baseline", "production", "--actor", "package-acceptance", "--reason", "clean install gate"], workspace);
+  await run(process.execPath, [cli, "check", "-c", config, "-t", "candidate", "--baseline", "production", "-o", "report.html"], workspace);
+  await run(process.execPath, [cli, "diff", "baseline:production", "latest"], workspace);
+  const historyOutput = await run(process.execPath, [cli, "history", "--baseline", "production", "--json"], workspace);
+  const history = JSON.parse(historyOutput);
+  if (history.length !== 1 || history[0].name !== "production" || history[0].actor !== "package-acceptance") {
+    throw new Error("Installed CLI did not preserve the expected baseline promotion history");
+  }
+  await run(process.execPath, [cli, "promote", "latest", "--baseline", "production", "--actor", "package-acceptance"], workspace);
+  await expectExit(process.execPath, [cli, "check", "-c", config, "-t", "baseline", "--baseline", "production", "-o", "blocked-report.html"], workspace, 1);
 
   const report = await stat(path.join(workspace, "report.html"));
+  await stat(path.join(workspace, "blocked-report.html"));
   const packageJson = JSON.parse(await readFile(path.join(workspace, "node_modules", "promptdiff", "package.json"), "utf8"));
   console.log(`Package acceptance passed: ${packageJson.name}@${packageJson.version}, report ${report.size} bytes.`);
 } finally {
@@ -50,4 +58,15 @@ async function run(command, args, cwd) {
     const detail = [error.stdout, error.stderr].filter(Boolean).join("\n").trim();
     throw new Error(`${command} ${args.join(" ")} failed${detail ? `:\n${detail}` : ""}`, { cause: error });
   }
+}
+
+async function expectExit(command, args, cwd, expectedCode) {
+  try {
+    await exec(command, args, { cwd, windowsHide: true, timeout: 120_000, maxBuffer: 10 * 1024 * 1024 });
+  } catch (error) {
+    if (error.code === expectedCode) return;
+    const detail = [error.stdout, error.stderr].filter(Boolean).join("\n").trim();
+    throw new Error(`${command} ${args.join(" ")} exited ${error.code}, expected ${expectedCode}${detail ? `:\n${detail}` : ""}`, { cause: error });
+  }
+  throw new Error(`${command} ${args.join(" ")} exited 0, expected ${expectedCode}`);
 }
