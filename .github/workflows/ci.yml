@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   build-test-smoke:
     runs-on: ubuntu-latest
@@ -39,10 +44,28 @@ jobs:
           node dist/cli.js run --config examples/prompt-to-agent/promptdiff.config.yml --target prompt-baseline
           node dist/cli.js run --config examples/prompt-to-agent/promptdiff.config.yml --target agent-candidate
           node dist/cli.js diff prompt-baseline agent-candidate
-          node dist/cli.js report prompt-baseline agent-candidate --output promptdiff-report.html
+          mkdir -p site
+          node dist/cli.js report prompt-baseline agent-candidate --output site/index.html --projected-calls 100000
 
       - name: Smoke test json-classifier example
         run: |
           node dist/cli.js run --config examples/json-classifier/promptdiff.config.yml --prompt baseline
           node dist/cli.js run --config examples/json-classifier/promptdiff.config.yml --prompt candidate
           node dist/cli.js diff baseline latest
+      - name: Upload live report
+        if: github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+  deploy-report:
+    if: github.event_name == 'push'
+    needs: build-test-smoke
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy live report
+        id: deployment
+        uses: actions/deploy-pages@v4
