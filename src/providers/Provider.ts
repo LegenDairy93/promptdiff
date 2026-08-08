@@ -4,11 +4,13 @@ export type PromptRunInput = {
   variables?: Record<string, string>;
   model?: string;
   temperature?: number;
+  timeoutMs?: number;
 };
 
 export type PromptRunOutput = {
   text: string;
   raw?: unknown;
+  model?: string;
   usage?: {
     inputTokens?: number;
     outputTokens?: number;

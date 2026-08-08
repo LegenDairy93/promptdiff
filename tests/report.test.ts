@@ -144,3 +144,19 @@ function artifact(runId: string, label: string, cases: Array<[string, boolean]>)
     }))
   };
 }
+
+describe("formatReport execution evidence", () => {
+  it("renders measured per-run latency without inventing missing values", () => {
+    const left = artifact("latency-left", "baseline", [["case", true]]);
+    const right = artifact("latency-right", "candidate", [["case", true]]);
+    left.cases[0].execution = { provider: "openrouter", model: "model/a", latencyMs: 900 };
+    right.cases[0].execution = { provider: "openrouter", model: "model/b", latencyMs: 1250 };
+    const html = formatReport(diffRuns(left, right), left, right);
+    expect(html).toContain("Measured latency / run");
+    expect(html).toContain("900ms");
+    expect(html).toContain("1.25s");
+    expect(html).toContain("Latency recorded for 1/1 and 1/1");
+    expect(html).toContain("model/a");
+    expect(html).toContain("model/b");
+  });
+});

@@ -73,6 +73,7 @@ export type RunArtifact = {
     passed: boolean;
     assertions: AssertionResult[];
     usage?: { inputTokens?: number; outputTokens?: number; costUsd?: number };
+    execution?: { provider: string; model?: string; latencyMs?: number };
     trace?: AgentTraceStep[];
     /** Present only when non-empty, so clean runs stay shape-identical to v0.1. */
     violations?: ToolViolation[];

@@ -107,6 +107,8 @@ export function formatReport(
 
   ${diff.assertionChanges.length ? assertionChangesSection(diff) : ""}
 
+  ${diff.modelChanges.length ? modelChangesSection(diff) : ""}
+
   <section>
     <h2 class="eyebrow">Case detail</h2>
     ${changedCaseIds.length
@@ -140,40 +142,51 @@ ${body}
 type UsageSummary = {
   totalCases: number;
   reportedCases: number;
+  latencyCases: number;
   inputTokens?: number;
   outputTokens?: number;
   costUsd?: number;
+  latencyMs?: number;
 };
 
 function summarizeUsage(artifact: RunArtifact): UsageSummary {
   let reportedCases = 0;
+  let latencyCases = 0;
   let inputTokens = 0;
   let outputTokens = 0;
   let costUsd = 0;
+  let latencyMs = 0;
   let hasInput = false;
   let hasOutput = false;
   let hasCost = false;
 
   for (const testCase of artifact.cases) {
     const usage = testCase.usage;
-    if (!usage) continue;
-    reportedCases += 1;
-    if (typeof usage.inputTokens === "number") { inputTokens += usage.inputTokens; hasInput = true; }
-    if (typeof usage.outputTokens === "number") { outputTokens += usage.outputTokens; hasOutput = true; }
-    if (typeof usage.costUsd === "number") { costUsd += usage.costUsd; hasCost = true; }
+    if (usage) {
+      reportedCases += 1;
+      if (typeof usage.inputTokens === "number") { inputTokens += usage.inputTokens; hasInput = true; }
+      if (typeof usage.outputTokens === "number") { outputTokens += usage.outputTokens; hasOutput = true; }
+      if (typeof usage.costUsd === "number") { costUsd += usage.costUsd; hasCost = true; }
+    }
+    if (typeof testCase.execution?.latencyMs === "number") {
+      latencyCases += 1;
+      latencyMs += testCase.execution.latencyMs;
+    }
   }
 
   return {
     totalCases: artifact.cases.length,
     reportedCases,
+    latencyCases,
     inputTokens: hasInput ? inputTokens : undefined,
     outputTokens: hasOutput ? outputTokens : undefined,
-    costUsd: hasCost ? costUsd : undefined
+    costUsd: hasCost ? costUsd : undefined,
+    latencyMs: latencyCases > 0 ? latencyMs : undefined
   };
 }
 
 function usageSummarySection(left: UsageSummary, right: UsageSummary, projectedCalls?: number): string {
-  const coverage = `Usage reported for ${left.reportedCases}/${left.totalCases} baseline cases and ${right.reportedCases}/${right.totalCases} candidate cases.`;
+  const coverage = `Usage reported for ${left.reportedCases}/${left.totalCases} baseline cases and ${right.reportedCases}/${right.totalCases} candidate cases. Latency recorded for ${left.latencyCases}/${left.totalCases} and ${right.latencyCases}/${right.totalCases}.`;
   const projection = typeof projectedCalls === "number" && projectedCalls > 0
     ? `<div class="tile scenario">
         <span class="k">Scenario estimate</span>
@@ -203,6 +216,11 @@ function usageSummarySection(left: UsageSummary, right: UsageSummary, projectedC
         <span class="delta flat">${deltaText(left.outputTokens, right.outputTokens, formatInteger)}</span>
       </div>
       <div class="tile">
+        <span class="k">Measured latency / run</span>
+        <span class="v">${metricPair(left.latencyMs, right.latencyMs, duration)}</span>
+        <span class="delta flat">${latencyDeltaText(left.latencyMs, right.latencyMs)}</span>
+      </div>
+      <div class="tile">
         <span class="k">Measured cost / run</span>
         <span class="v">${metricPair(left.costUsd, right.costUsd, money)}</span>
         <span class="delta ${costTone(left.costUsd, right.costUsd)}">${deltaText(left.costUsd, right.costUsd, money)}</span>
@@ -224,6 +242,17 @@ function deltaText(left: number | undefined, right: number | undefined, format: 
   return `${delta >= 0 ? "+" : ""}${format(delta)} change`;
 }
 
+function latencyDeltaText(left?: number, right?: number): string {
+  if (left === undefined || right === undefined) return "No comparable latency data";
+  const delta = right - left;
+  return `${delta >= 0 ? "+" : ""}${duration(delta)} change`;
+}
+
+function duration(value: number): string {
+  const sign = value < 0 ? "-" : "";
+  const absolute = Math.abs(value);
+  return absolute >= 1000 ? `${sign}${(absolute / 1000).toFixed(2)}s` : `${sign}${Math.round(absolute)}ms`;
+}
 function costTone(left?: number, right?: number): "up" | "down" | "flat" {
   if (left === undefined || right === undefined || left === right) return "flat";
   return right < left ? "up" : "down";
@@ -244,6 +273,7 @@ function orderedChangedCaseIds(diff: RunDiff, left: RunArtifact, right: RunArtif
     ...diff.newlyFailing,
     ...diff.assertionChanges.map((change) => change.caseId),
     ...diff.outputChanges.map((change) => change.caseId),
+    ...diff.modelChanges.map((change) => change.caseId),
     // Without these, a case whose only change is which tools ran never renders — and the
     // trace comparison, the whole point of the feature, stays invisible.
     ...diff.toolChanges.map((change) => change.caseId),
@@ -452,6 +482,22 @@ function token(passed?: boolean): string {
   return passed ? `<span class="tk pass">pass</span>` : `<span class="tk fail">fail</span>`;
 }
 
+function modelChangesSection(diff: RunDiff): string {
+  const rows = diff.modelChanges.map((change) => `<tr>
+    <td class="mono">${esc(change.caseId)}</td>
+    <td class="mono">${esc(String(change.step))}</td>
+    <td class="mono">${esc(change.left)}</td>
+    <td class="flip">&rarr;</td>
+    <td class="mono">${esc(change.right)}</td>
+  </tr>`).join("");
+  return `<section>
+    <h2 class="eyebrow">Model path changes</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Case</th><th>Step</th><th>Baseline</th><th></th><th>Candidate</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </section>`;
+}
 function assertionChangesSection(diff: RunDiff): string {
   const rows = diff.assertionChanges
     .map(

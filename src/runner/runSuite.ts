@@ -35,14 +35,18 @@ export async function runSuite(loadedConfig: LoadedConfig, options: RunSuiteOpti
   const traceSources: string[] = [];
 
   for (const testCase of config.cases) {
+    const startedAt = performance.now();
     const result = resolved.config.kind === "prompt"
-      ? await provider!.run({ prompt: renderPrompt(prompt!, testCase), input: testCase.input, variables: testCase.variables, model: providerConfig?.model, temperature: providerConfig?.temperature })
+      ? await provider!.run({ prompt: renderPrompt(prompt!, testCase), input: testCase.input, variables: testCase.variables, model: providerConfig?.model, temperature: providerConfig?.temperature, timeoutMs: providerConfig?.timeout_ms })
       : resolved.config.kind === "agent"
         ? await runAgentCommand({ command: resolved.config.command, cwd: loadedConfig.rootDir, timeoutMs: resolved.config.timeout_ms, label: resolved.label, instructions, tools: resolved.config.tools, testCase })
         : resolved.config.kind === "http"
           ? await runHttpWorkflow({ target: resolved.config, label: resolved.label, testCase })
           : await runTraceImport({ target: resolved.config, rootDir: loadedConfig.rootDir, label: resolved.label, testCase });
     if ("sourceIdentity" in result && typeof result.sourceIdentity === "string") traceSources.push(result.sourceIdentity);
+    const latencyMs = Math.max(0, Math.round(performance.now() - startedAt));
+    const resultModel = "model" in result && typeof result.model === "string" ? result.model : providerConfig?.model;
+    const execution = { provider: resolved.config.kind === "prompt" ? provider!.name : resolved.config.kind, model: resultModel, latencyMs };
     const output = "text" in result ? result.text : result.output;
     // Trace and violations must exist before assertions run — trace assertions read them.
     const trace = "trace" in result ? result.trace : undefined;
@@ -53,7 +57,7 @@ export async function runSuite(loadedConfig: LoadedConfig, options: RunSuiteOpti
     const assertions = testCase.assertions.map((assertion) => evaluateAssertion(assertion, { output, trace, violations, declaredTools }));
     cases.push({
       id: testCase.id, input: testCase.input, output, passed: assertions.every((a) => a.passed), assertions,
-      usage: result.usage, trace,
+      usage: result.usage, execution, trace,
       violations: violations?.length ? violations : undefined
     });
   }

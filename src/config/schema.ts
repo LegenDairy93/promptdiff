@@ -64,7 +64,11 @@ export const testCaseSchema = z.object({
 export const providerConfigSchema = z.object({
   type: z.string().min(1).default("mock"),
   model: z.string().optional(),
-  temperature: z.number().optional()
+  temperature: z.number().optional(),
+  timeout_ms: z.number().int().positive().default(60_000),
+  base_url: z.string().min(1).optional(),
+  api_key_env: z.string().regex(/^[A-Z_][A-Z0-9_]*$/).optional(),
+  header_env: z.record(z.string(), z.string().regex(/^[A-Z_][A-Z0-9_]*$/)).default({})
 }).passthrough();
 
 /**

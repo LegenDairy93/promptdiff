@@ -21,7 +21,7 @@ export type OutputChange = {
 };
 export type ModelChange = {
   caseId: string;
-  step: number;
+  step: number | "response";
   left: string;
   right: string;
 };
@@ -126,7 +126,7 @@ export function diffRuns(left: RunArtifact, right: RunArtifact, options: DiffOpt
         rightSnippet: snippet(rightCase.output)
       });
     }
-    modelChanges.push(...collectModelChanges(caseId, leftCase.trace, rightCase.trace));
+    modelChanges.push(...collectModelChanges(caseId, leftCase, rightCase));
 
     // Identical output does not mean identical behavior: compare which tools ran, and how often.
     const leftUsage = toolUsage(leftCase);
@@ -171,16 +171,26 @@ export function diffRuns(left: RunArtifact, right: RunArtifact, options: DiffOpt
   };
 }
 
-function collectModelChanges(caseId: string, leftTrace: RunArtifact["cases"][number]["trace"], rightTrace: RunArtifact["cases"][number]["trace"]): ModelChange[] {
-  const left = (leftTrace ?? []).filter((step) => step.type === "model");
-  const right = (rightTrace ?? []).filter((step) => step.type === "model");
+function collectModelChanges(caseId: string, leftCase: RunArtifact["cases"][number], rightCase: RunArtifact["cases"][number]): ModelChange[] {
   const changes: ModelChange[] = [];
+  const leftResponse = responseModelIdentity(leftCase);
+  const rightResponse = responseModelIdentity(rightCase);
+  if ((leftCase.execution?.model || rightCase.execution?.model) && leftResponse !== rightResponse) {
+    changes.push({ caseId, step: "response", left: leftResponse, right: rightResponse });
+  }
+  const left = (leftCase.trace ?? []).filter((step) => step.type === "model");
+  const right = (rightCase.trace ?? []).filter((step) => step.type === "model");
   for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
     const leftIdentity = modelIdentity(left[index]);
     const rightIdentity = modelIdentity(right[index]);
     if (leftIdentity !== rightIdentity) changes.push({ caseId, step: index + 1, left: leftIdentity, right: rightIdentity });
   }
   return changes;
+}
+
+function responseModelIdentity(testCase: RunArtifact["cases"][number]): string {
+  if (!testCase.execution?.model) return "none";
+  return [testCase.execution.provider, testCase.execution.model].filter(Boolean).join("/");
 }
 
 function modelIdentity(step: NonNullable<RunArtifact["cases"][number]["trace"]>[number] | undefined): string {

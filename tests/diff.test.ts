@@ -119,3 +119,10 @@ describe("diffRuns model path awareness", () => {
     expect(diff.modelChanges).toEqual([{ caseId: "route", step: 1, left: "openrouter/model/a", right: "openrouter/model/b" }]);
   });
 });
+describe("diffRuns provider response identity", () => {
+  it("reports the actual returned model, not only configured target metadata", () => {
+    const left = agentArtifact("actual-left", "baseline", [{ id: "same", passed: true, output: "same", execution: { provider: "openrouter", model: "routed/a", latencyMs: 10 } }]);
+    const right = agentArtifact("actual-right", "candidate", [{ id: "same", passed: true, output: "same", execution: { provider: "openrouter", model: "routed/b", latencyMs: 11 } }]);
+    expect(diffRuns(left, right).modelChanges).toEqual([{ caseId: "same", step: "response", left: "openrouter/routed/a", right: "openrouter/routed/b" }]);
+  });
+});
