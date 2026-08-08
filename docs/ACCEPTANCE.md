@@ -5,7 +5,7 @@ This file is the release gate for calling PromptDiff a complete portfolio produc
 ## Verified baseline — 2026-08-09
 
 - Original baseline: `npm test` passed 78 tests before product expansion.
-- Current checkpoint: 92 tests pass, including HTTP workflows, trace imports, model-path diffs, bounded providers, secret redaction, and the OpenAI Responses API wire format; three distinct example paths also pass end to end.
+- Current checkpoint: 94 tests pass, including HTTP workflows, trace imports, model-path diffs, bounded providers, secret redaction, and the OpenAI Responses API wire format; three distinct example paths also pass end to end.
 - `npm run build`: TypeScript build passes.
 - `npm pack --dry-run`: the CLI, documentation, and examples are included.
 - `apps/web npm test`: build and one server-rendered HTML check pass.
@@ -16,14 +16,15 @@ This file is the release gate for calling PromptDiff a complete portfolio produc
 | Gate | Status | Current evidence |
 |---|---|---|
 | PD-01 | Pass | `npm run test:package` builds a tarball, installs it in a new temp project, opens the installed CLI, runs two shipped targets, diffs them, and creates an HTML report. |
-| PD-02 | Pass | All 78 baseline tests remain green; the additive target schemas and provider hardening bring the suite to 92 tests. |
+| PD-02 | Pass | All 78 baseline tests remain green; the additive target schemas and provider hardening bring the suite to 94 tests. |
 | PD-03 | In progress | Provider adapters have mocked protocol, timeout, model-identity, usage, and secret-redaction coverage. A current real key-backed integration run is still required. |
 | PD-05 | Pass | `tests/http.test.ts` proves request/body mapping, environment-backed authorization, response/trace/usage mapping, tool assertions, and bounded timeout failure. |
 | PD-06 | Pass | `tests/traceImport.test.ts` proves JSON envelope and JSONL loop import, assertions, usage, per-step models, and source-content identity changes. |
 | PD-07 | Pass | Model provider/identity is retained per trace step and `tests/diff.test.ts` proves a model substitution is reported when output is identical. |
 | PD-08 | Pass | End-to-end runs pass for the HTTP ticket router, captured multi-model JSONL loop, and existing prompt-to-command-agent example. |
 | PD-09 | Pass | Clean-package acceptance promotes a named baseline, runs `check`, resolves `baseline:production`, verifies promotion history, produces reports for allowed and blocked reviews, and verifies exit codes `0` and `1`. |
-| PD-11 | Pass | `.github/workflows/ci.yml` runs the baseline/check loop, writes the terminal verdict to the GitHub job summary, preserves the HTML report with `if: always()`, and propagates the gate exit code. |
+| PD-10 | Pass | Terminal output and self-contained HTML now show gate basis, output/assertion/trace/tool changes, observed response and trace model paths, measured latency, token usage, cost, and explicit missing-data coverage; execution-evidence regression tests and clean-package reports pass. |
+| PD-11 | Pass | `.github/workflows/ci.yml` runs the baseline/check loop, writes the terminal verdict to the GitHub job summary, preserves the HTML report with `if: always()`, and propagates the gate exit code. GitHub Actions run 31277900726 passed. |
 | PD-14 | Pass | README has separate runnable entry paths for prompt/model, framework-neutral HTTP workflow, and executable/imported agent or multi-model traces. |
 | PD-15 | Pass | README positions Promptfoo as the broader eval/red-team matrix and limits PromptDiff's claim to the before/after promotion and release-review loop. |
 ## Required gates

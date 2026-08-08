@@ -98,3 +98,28 @@ describe("formatDiff model path", () => {
     expect(text).toContain("openrouter/model/b");
   });
 });
+
+describe("formatDiff execution evidence", () => {
+  it("shows observed models, latency, usage, cost, coverage, and the gate basis", () => {
+    const left = agentArtifact("evidence-left", "baseline", [{
+      id: "case", passed: true, output: "same",
+      execution: { provider: "openrouter", model: "model/a", latencyMs: 900 },
+      usage: { inputTokens: 1000, outputTokens: 20, costUsd: 0.001 }
+    }]);
+    const right = agentArtifact("evidence-right", "candidate", [{
+      id: "case", passed: false, output: "changed",
+      execution: { provider: "openrouter", model: "model/b", latencyMs: 1200 },
+      usage: { inputTokens: 1200, outputTokens: 25, costUsd: 0.002 }
+    }]);
+    const rendered = formatDiff(diffRuns(left, right), 0);
+    expect(rendered).toContain("Gate verdict: BLOCK (1 regressions, 0 allowed)");
+    expect(rendered).toContain("Execution evidence");
+    expect(rendered).toContain("openrouter/model/a");
+    expect(rendered).toContain("openrouter/model/b");
+    expect(rendered).toContain("900ms");
+    expect(rendered).toContain("1.20s");
+    expect(rendered).toContain("1,000");
+    expect(rendered).toContain("$0.001000");
+    expect(rendered).toContain("1/1 usage; 1/1 latency");
+  });
+});

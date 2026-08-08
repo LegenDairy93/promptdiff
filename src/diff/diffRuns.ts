@@ -26,6 +26,16 @@ export type ModelChange = {
   right: string;
 };
 
+export type ExecutionSummary = {
+  totalCases: number;
+  usageCases: number;
+  latencyCases: number;
+  models: string[];
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+  latencyMs?: number;
+};
 /**
  * How alarming a tool change is. Drives ordering and truncation so a dangerous change is
  * never buried under benign ones — the safeguard that makes the informational default safe.
@@ -69,6 +79,8 @@ export type RunDiff = {
   modelChanges: ModelChange[];
   toolChanges: ToolChange[];
   violationChanges: ViolationChange[];
+  leftExecution: ExecutionSummary;
+  rightExecution: ExecutionSummary;
   regressionCount: number;
 };
 
@@ -167,10 +179,55 @@ export function diffRuns(left: RunArtifact, right: RunArtifact, options: DiffOpt
     modelChanges,
     toolChanges: toolChanges.sort(bySeverity),
     violationChanges,
+    leftExecution: summarizeExecution(left),
+    rightExecution: summarizeExecution(right),
     regressionCount: regressedCaseIds.size
   };
 }
 
+function summarizeExecution(artifact: RunArtifact): ExecutionSummary {
+  const models = new Set<string>();
+  let usageCases = 0;
+  let latencyCases = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let costUsd = 0;
+  let latencyMs = 0;
+  let hasInput = false;
+  let hasOutput = false;
+  let hasCost = false;
+
+  for (const testCase of artifact.cases) {
+    if (testCase.execution?.model) models.add(`${testCase.execution.provider}/${testCase.execution.model}`);
+    for (const step of testCase.trace ?? []) {
+      if (step.type === "model") {
+        const identity = modelIdentity(step);
+        if (identity !== "none" && identity !== "unidentified model") models.add(identity);
+      }
+    }
+    if (testCase.usage) {
+      usageCases += 1;
+      if (typeof testCase.usage.inputTokens === "number") { inputTokens += testCase.usage.inputTokens; hasInput = true; }
+      if (typeof testCase.usage.outputTokens === "number") { outputTokens += testCase.usage.outputTokens; hasOutput = true; }
+      if (typeof testCase.usage.costUsd === "number") { costUsd += testCase.usage.costUsd; hasCost = true; }
+    }
+    if (typeof testCase.execution?.latencyMs === "number") {
+      latencyCases += 1;
+      latencyMs += testCase.execution.latencyMs;
+    }
+  }
+
+  return {
+    totalCases: artifact.cases.length,
+    usageCases,
+    latencyCases,
+    models: [...models].sort(),
+    inputTokens: hasInput ? inputTokens : undefined,
+    outputTokens: hasOutput ? outputTokens : undefined,
+    costUsd: hasCost ? costUsd : undefined,
+    latencyMs: latencyCases > 0 ? latencyMs : undefined
+  };
+}
 function collectModelChanges(caseId: string, leftCase: RunArtifact["cases"][number], rightCase: RunArtifact["cases"][number]): ModelChange[] {
   const changes: ModelChange[] = [];
   const leftResponse = responseModelIdentity(leftCase);

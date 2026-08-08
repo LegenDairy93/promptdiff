@@ -1,7 +1,7 @@
-import type { RunDiff } from "./diffRuns.js";
+import type { ExecutionSummary, RunDiff } from "./diffRuns.js";
 import { formatTable } from "../output/table.js";
 
-export function formatDiff(diff: RunDiff): string {
+export function formatDiff(diff: RunDiff, maxRegressions = 0): string {
   const lines: string[] = [];
 
   lines.push(`Left:  ${diff.leftRunId}`);
@@ -11,6 +11,18 @@ export function formatDiff(diff: RunDiff): string {
     ["Metric", "Left", "Right", "Delta"],
     ["Pass rate", percent(diff.leftPassRate), percent(diff.rightPassRate), signedPercent(diff.passRateDelta)],
     ["Regressions", "", String(diff.regressionCount), ""]
+  ]));
+  lines.push(`Gate verdict: ${diff.regressionCount > maxRegressions ? "BLOCK" : "ALLOW"} (${diff.regressionCount} regressions, ${maxRegressions} allowed)`);
+  lines.push("");
+  lines.push("Execution evidence");
+  lines.push(formatTable([
+    ["Evidence", "Left", "Right"],
+    ["Models", formatModels(diff.leftExecution), formatModels(diff.rightExecution)],
+    ["Latency / run", formatDuration(diff.leftExecution.latencyMs), formatDuration(diff.rightExecution.latencyMs)],
+    ["Input tokens", formatNumber(diff.leftExecution.inputTokens), formatNumber(diff.rightExecution.inputTokens)],
+    ["Output tokens", formatNumber(diff.leftExecution.outputTokens), formatNumber(diff.rightExecution.outputTokens)],
+    ["Cost / run", formatMoney(diff.leftExecution.costUsd), formatMoney(diff.rightExecution.costUsd)],
+    ["Coverage", formatCoverage(diff.leftExecution), formatCoverage(diff.rightExecution)]
   ]));
   lines.push("");
   lines.push(`Newly passing: ${formatList(diff.newlyPassing)}`);
@@ -125,4 +137,24 @@ function signedPercent(value: number): string {
 
 function formatList(values: string[]): string {
   return values.length > 0 ? values.join(", ") : "none";
+}
+function formatModels(summary: ExecutionSummary): string {
+  return summary.models.length > 0 ? summary.models.join(", ") : "not recorded";
+}
+
+function formatDuration(value?: number): string {
+  if (value === undefined) return "not recorded";
+  return value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`;
+}
+
+function formatNumber(value?: number): string {
+  return value === undefined ? "not recorded" : Math.round(value).toLocaleString("en-US");
+}
+
+function formatMoney(value?: number): string {
+  return value === undefined ? "not recorded" : `$${value.toFixed(6)}`;
+}
+
+function formatCoverage(summary: ExecutionSummary): string {
+  return `${summary.usageCases}/${summary.totalCases} usage; ${summary.latencyCases}/${summary.totalCases} latency`;
 }

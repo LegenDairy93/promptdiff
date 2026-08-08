@@ -143,6 +143,7 @@ type UsageSummary = {
   totalCases: number;
   reportedCases: number;
   latencyCases: number;
+  models: string[];
   inputTokens?: number;
   outputTokens?: number;
   costUsd?: number;
@@ -156,11 +157,18 @@ function summarizeUsage(artifact: RunArtifact): UsageSummary {
   let outputTokens = 0;
   let costUsd = 0;
   let latencyMs = 0;
+  const models = new Set<string>();
   let hasInput = false;
   let hasOutput = false;
   let hasCost = false;
 
   for (const testCase of artifact.cases) {
+    if (testCase.execution?.model) models.add(`${testCase.execution.provider}/${testCase.execution.model}`);
+    for (const step of testCase.trace ?? []) {
+      if (step.type !== "model") continue;
+      const identity = [step.provider, step.model].filter(Boolean).join("/") || step.name;
+      if (identity) models.add(identity);
+    }
     const usage = testCase.usage;
     if (usage) {
       reportedCases += 1;
@@ -178,6 +186,7 @@ function summarizeUsage(artifact: RunArtifact): UsageSummary {
     totalCases: artifact.cases.length,
     reportedCases,
     latencyCases,
+    models: [...models].sort(),
     inputTokens: hasInput ? inputTokens : undefined,
     outputTokens: hasOutput ? outputTokens : undefined,
     costUsd: hasCost ? costUsd : undefined,
@@ -206,6 +215,11 @@ function usageSummarySection(left: UsageSummary, right: UsageSummary, projectedC
     </div>
     <div class="tiles usage-tiles">
       <div class="tile">
+        <span class="k">Observed model path</span>
+        <span class="v mono">${modelPair(left.models, right.models)}</span>
+        <span class="delta flat">Returned response and trace identities</span>
+      </div>
+      <div class="tile">
         <span class="k">Input tokens / run</span>
         <span class="v">${metricPair(left.inputTokens, right.inputTokens, formatInteger)}</span>
         <span class="delta flat">${deltaText(left.inputTokens, right.inputTokens, formatInteger)}</span>
@@ -231,6 +245,11 @@ function usageSummarySection(left: UsageSummary, right: UsageSummary, projectedC
   </section>`;
 }
 
+function modelPair(left: string[], right: string[]): string {
+  const leftText = left.length > 0 ? left.join(", ") : "not recorded";
+  const rightText = right.length > 0 ? right.join(", ") : "not recorded";
+  return `${esc(leftText)} <span class="flip">&rarr;</span> ${esc(rightText)}`;
+}
 function metricPair(left: number | undefined, right: number | undefined, format: (value: number) => string): string {
   if (left === undefined || right === undefined) return `<span class="unavailable">not recorded</span>`;
   return `<span class="from">${format(left)}</span> &rarr; <span>${format(right)}</span>`;

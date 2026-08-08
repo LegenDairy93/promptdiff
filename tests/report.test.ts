@@ -159,4 +159,15 @@ describe("formatReport execution evidence", () => {
     expect(html).toContain("model/a");
     expect(html).toContain("model/b");
   });
+
+  it("renders an unchanged observed model path even without a model-change event", () => {
+    const left = artifact("model-left", "baseline", [["case", true]]);
+    const right = artifact("model-right", "candidate", [["case", true]]);
+    left.cases[0].execution = { provider: "openrouter", model: "same-model", latencyMs: 10 };
+    right.cases[0].execution = { provider: "openrouter", model: "same-model", latencyMs: 11 };
+    const html = formatReport(diffRuns(left, right), left, right);
+    expect(html).toContain("Observed model path");
+    expect(html).toContain("openrouter/same-model");
+    expect(diffRuns(left, right).modelChanges).toEqual([]);
+  });
 });

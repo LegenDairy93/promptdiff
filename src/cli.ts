@@ -77,7 +77,7 @@ program
       const right = await resolveRun(rightRef);
       const diff = diffRuns(left.artifact, right.artifact, { gateToolDrift: options.gateToolDrift, gateCallDeltas: options.gateCallDeltas });
 
-      console.log(formatDiff(diff));
+      console.log(formatDiff(diff, options.maxRegressions));
       const hint = ungatedToolHint(diff, options);
       if (hint) console.log(hint);
       if (diff.regressionCount > options.maxRegressions) {
@@ -123,7 +123,7 @@ program
         projectedCalls: options.projectedCalls
       });
       await writeFile(options.output, html, "utf8");
-      console.log(formatDiff(diff));
+      console.log(formatDiff(diff, options.maxRegressions));
       const hint = ungatedToolHint(diff, options);
       if (hint) console.log(hint);
       console.log(`Candidate run: ${candidate.artifact.runId}`);
