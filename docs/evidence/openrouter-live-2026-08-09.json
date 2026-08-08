@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "executedAt": "2026-08-09T02:29:15+05:30",
+  "promptdiffRunId": "2026-08-08T20-59-15-899Z-09d2e3",
+  "provider": "openrouter",
+  "requestedModel": "openrouter/free",
+  "summary": { "passed": 2, "failed": 0 },
+  "cases": [
+    {
+      "id": "damaged-order",
+      "returnedModel": "poolside/laguna-s-2.1:free",
+      "latencyMs": 4481,
+      "inputTokens": 48,
+      "outputTokens": 148,
+      "costUsd": 0,
+      "passed": true
+    },
+    {
+      "id": "late-return",
+      "returnedModel": "nvidia/nemotron-nano-9b-v2:free",
+      "latencyMs": 9901,
+      "inputTokens": 50,
+      "outputTokens": 476,
+      "costUsd": 0,
+      "passed": true
+    }
+  ],
+  "invalidCredentialProbe": {
+    "upstreamStatus": 401,
+    "cliExitCode": 2,
+    "credentialPresentInCapturedOutput": false
+  },
+  "note": "Sanitized acceptance evidence. Prompts, outputs, and credentials are intentionally omitted. A fresh key-backed run is required to reproduce it."
+}

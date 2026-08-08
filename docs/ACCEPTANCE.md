@@ -17,7 +17,7 @@ This file is the release gate for calling PromptDiff a complete portfolio produc
 |---|---|---|
 | PD-01 | Pass | `npm run test:package` builds a tarball, installs it in a new temp project, opens the installed CLI, runs two shipped targets, diffs them, and creates an HTML report. |
 | PD-02 | Pass | All 78 baseline tests remain green; the additive target schemas and provider hardening bring the suite to 94 tests. |
-| PD-03 | In progress | Provider adapters have mocked protocol, timeout, model-identity, usage, and secret-redaction coverage. A current real key-backed integration run is still required. |
+| PD-03 | Pass | A current key-backed `openrouter/free` run passed 2/2 cases and recorded two provider-returned model identities, latency, tokens, and zero reported cost. A real invalid-credential probe returned bounded exit `2`/HTTP `401` with the credential absent from captured output. Sanitized evidence: `docs/evidence/openrouter-live-2026-08-09.json`. |
 | PD-05 | Pass | `tests/http.test.ts` proves request/body mapping, environment-backed authorization, response/trace/usage mapping, tool assertions, and bounded timeout failure. |
 | PD-06 | Pass | `tests/traceImport.test.ts` proves JSON envelope and JSONL loop import, assertions, usage, per-step models, and source-content identity changes. |
 | PD-07 | Pass | Model provider/identity is retained per trace step and `tests/diff.test.ts` proves a model substitution is reported when output is identical. |

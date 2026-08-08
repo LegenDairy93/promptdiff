@@ -99,7 +99,7 @@ targets:
     file: prompt-v1.md
     provider:
       type: openrouter
-      model: openrouter/auto-beta
+      model: openrouter/free
       temperature: 0
 
   candidate:
@@ -107,7 +107,7 @@ targets:
     file: prompt-v2.md
     provider:
       type: openrouter
-      model: openrouter/auto-beta
+      model: openrouter/free
       temperature: 0
 ~~~
 

@@ -12,7 +12,7 @@ node dist/cli.js diff previous latest
 node dist/cli.js report previous latest -o openrouter-report.html --projected-calls 100000
 ~~~
 
-The example uses `openrouter/auto-beta`. Replace it with explicit OpenRouter model slugs when you need the model identity held constant. To compare two models as well as two prompts, set a different model under each target.
+The example uses the zero-cost `openrouter/free` router. Replace it with an explicit OpenRouter model slug when you need model identity held constant. To compare two models as well as two prompts, set a different model under each target.
 
 
 The projection is an explicit traffic assumption. The per-run token and cost totals come from the two recorded OpenRouter artifacts.
