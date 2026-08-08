@@ -3,6 +3,8 @@ import type { AssertionResult } from "../assertions/types.js";
 export type AgentTraceStep = {
   type: "model" | "tool" | "final";
   name?: string;
+  provider?: string;
+  model?: string;
   input?: unknown;
   output?: unknown;
 };
@@ -52,7 +54,7 @@ export type RunArtifact = {
   provider: { type: string; model?: string; temperature?: number };
   provenance?: RunProvenance;
   target?: {
-    kind: "prompt" | "agent";
+    kind: "prompt" | "agent" | "http";
     label: string;
     path?: string;
     sha256: string;

@@ -19,6 +19,12 @@ export type OutputChange = {
   leftSnippet: string;
   rightSnippet: string;
 };
+export type ModelChange = {
+  caseId: string;
+  step: number;
+  left: string;
+  right: string;
+};
 
 /**
  * How alarming a tool change is. Drives ordering and truncation so a dangerous change is
@@ -60,6 +66,7 @@ export type RunDiff = {
   newlyFailing: string[];
   assertionChanges: AssertionChange[];
   outputChanges: OutputChange[];
+  modelChanges: ModelChange[];
   toolChanges: ToolChange[];
   violationChanges: ViolationChange[];
   regressionCount: number;
@@ -73,6 +80,7 @@ export function diffRuns(left: RunArtifact, right: RunArtifact, options: DiffOpt
   const newlyFailing: string[] = [];
   const assertionChanges: AssertionChange[] = [];
   const outputChanges: OutputChange[] = [];
+  const modelChanges: ModelChange[] = [];
   const toolChanges: ToolChange[] = [];
   const violationChanges: ViolationChange[] = [];
   const regressedCaseIds = new Set<string>();
@@ -118,6 +126,7 @@ export function diffRuns(left: RunArtifact, right: RunArtifact, options: DiffOpt
         rightSnippet: snippet(rightCase.output)
       });
     }
+    modelChanges.push(...collectModelChanges(caseId, leftCase.trace, rightCase.trace));
 
     // Identical output does not mean identical behavior: compare which tools ran, and how often.
     const leftUsage = toolUsage(leftCase);
@@ -155,12 +164,30 @@ export function diffRuns(left: RunArtifact, right: RunArtifact, options: DiffOpt
     newlyFailing,
     assertionChanges,
     outputChanges,
+    modelChanges,
     toolChanges: toolChanges.sort(bySeverity),
     violationChanges,
     regressionCount: regressedCaseIds.size
   };
 }
 
+function collectModelChanges(caseId: string, leftTrace: RunArtifact["cases"][number]["trace"], rightTrace: RunArtifact["cases"][number]["trace"]): ModelChange[] {
+  const left = (leftTrace ?? []).filter((step) => step.type === "model");
+  const right = (rightTrace ?? []).filter((step) => step.type === "model");
+  const changes: ModelChange[] = [];
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const leftIdentity = modelIdentity(left[index]);
+    const rightIdentity = modelIdentity(right[index]);
+    if (leftIdentity !== rightIdentity) changes.push({ caseId, step: index + 1, left: leftIdentity, right: rightIdentity });
+  }
+  return changes;
+}
+
+function modelIdentity(step: NonNullable<RunArtifact["cases"][number]["trace"]>[number] | undefined): string {
+  if (!step) return "none";
+  const identity = [step.provider, step.model].filter(Boolean).join("/");
+  return identity || step.name || "unidentified model";
+}
 function bySeverity(left: ToolChange, right: ToolChange): number {
   const delta = TOOL_SEVERITY_ORDER.indexOf(left.severity) - TOOL_SEVERITY_ORDER.indexOf(right.severity);
   return delta !== 0 ? delta : left.caseId.localeCompare(right.caseId) || left.name.localeCompare(right.name);

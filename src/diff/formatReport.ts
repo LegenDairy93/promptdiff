@@ -359,7 +359,7 @@ function alignTraces(left: AgentTraceStep[] = [], right: AgentTraceStep[] = [], 
     const leftStep = left[l]!;
     const rightStep = right[r]!;
     if (key(leftStep) === key(rightStep)) {
-      const same = stringify(leftStep.output ?? leftStep.input ?? "") === stringify(rightStep.output ?? rightStep.input ?? "");
+      const same = stringify(leftStep) === stringify(rightStep);
       rows.push({ left: leftStep, right: rightStep, state: same ? "same" : "changed" });
       l += 1; r += 1;
       continue;
@@ -389,9 +389,11 @@ function traceComparison(leftCase?: RunArtifact["cases"][number], rightCase?: Ru
   if (!leftCase?.trace && !rightCase?.trace) return "";
   const rows = alignTraces(leftCase?.trace, rightCase?.trace);
   if (rows.length === 0) return `<div class="trace"><span class="empty">no trace captured</span></div>`;
-  const cell = (step?: AgentTraceStep) => step
-    ? `<b>${esc(step.type)}${step.name ? ` / ${esc(step.name)}` : ""}</b><span>${esc(stringify(step.output ?? step.input ?? ""))}</span>`
-    : `<span class="empty">&mdash;</span>`;
+  const cell = (step?: AgentTraceStep) => {
+    if (!step) return `<span class="empty">&mdash;</span>`;
+    const modelIdentity = [step.provider, step.model].filter(Boolean).join("/");
+    return `<b>${esc(step.type)}${step.name ? ` / ${esc(step.name)}` : ""}${modelIdentity ? ` / ${esc(modelIdentity)}` : ""}</b><span>${esc(stringify(step.output ?? step.input ?? ""))}</span>`;
+  };
   const body = rows.map((row, index) => `<div class="trace-row ${row.state}">
     <span class="trace-n">${index + 1}</span>
     <div class="trace-step">${cell(row.left)}</div>

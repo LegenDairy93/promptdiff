@@ -102,3 +102,20 @@ describe("diffRuns tool awareness", () => {
     ]);
   });
 });
+
+describe("diffRuns model path awareness", () => {
+  const left = agentArtifact("left-model", "baseline", [{
+    id: "route", passed: true, output: "same",
+    trace: [{ type: "model", name: "planner", provider: "openrouter", model: "model/a", output: "same" }]
+  }]);
+  const right = agentArtifact("right-model", "candidate", [{
+    id: "route", passed: true, output: "same",
+    trace: [{ type: "model", name: "planner", provider: "openrouter", model: "model/b", output: "same" }]
+  }]);
+
+  it("reports a model substitution even when output is identical", () => {
+    const diff = diffRuns(left, right);
+    expect(diff.outputChanges).toEqual([]);
+    expect(diff.modelChanges).toEqual([{ caseId: "route", step: 1, left: "openrouter/model/a", right: "openrouter/model/b" }]);
+  });
+});

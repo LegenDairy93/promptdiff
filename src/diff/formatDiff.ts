@@ -30,6 +30,14 @@ export function formatDiff(diff: RunDiff): string {
     ]));
   }
 
+  if (diff.modelChanges.length > 0) {
+    lines.push("");
+    lines.push("Model path changes");
+    lines.push(formatTable([
+      ["Case", "Model step", "Left", "Right"],
+      ...diff.modelChanges.map((change) => [change.caseId, String(change.step), change.left, change.right])
+    ]));
+  }
   // Tool sections render above output changes: nothing gates on them by default, so visibility is the safeguard.
   if (diff.violationChanges.length > 0) {
     lines.push("");

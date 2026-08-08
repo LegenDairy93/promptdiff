@@ -9,6 +9,7 @@ import { collectProvenance } from "../artifacts/provenance.js";
 import { writeRun, type WriteRunResult } from "../artifacts/writeRun.js";
 import { createProvider } from "../providers/createProvider.js";
 import { runAgentCommand } from "./runAgent.js";
+import { runHttpWorkflow } from "./runHttp.js";
 import { validateTrace } from "./validateTrace.js";
 import { renderPrompt } from "./renderPrompt.js";
 
@@ -34,11 +35,13 @@ export async function runSuite(loadedConfig: LoadedConfig, options: RunSuiteOpti
   for (const testCase of config.cases) {
     const result = resolved.config.kind === "prompt"
       ? await provider!.run({ prompt: renderPrompt(prompt!, testCase), input: testCase.input, variables: testCase.variables, model: providerConfig?.model, temperature: providerConfig?.temperature })
-      : await runAgentCommand({ command: resolved.config.command, cwd: loadedConfig.rootDir, timeoutMs: resolved.config.timeout_ms, label: resolved.label, instructions, tools: resolved.config.tools, testCase });
+      : resolved.config.kind === "agent"
+        ? await runAgentCommand({ command: resolved.config.command, cwd: loadedConfig.rootDir, timeoutMs: resolved.config.timeout_ms, label: resolved.label, instructions, tools: resolved.config.tools, testCase })
+        : await runHttpWorkflow({ target: resolved.config, label: resolved.label, testCase });
     const output = "text" in result ? result.text : result.output;
     // Trace and violations must exist before assertions run — trace assertions read them.
     const trace = "trace" in result ? result.trace : undefined;
-    const declaredTools = resolved.config.kind === "agent" ? resolved.config.tools : undefined;
+    const declaredTools = resolved.config.kind === "prompt" ? undefined : resolved.config.tools;
     const violations = "trace" in result
       ? validateTrace({ steps: result.trace, indices: result.indices, declarations: declaredTools ?? [], malformed: result.malformed })
       : undefined;
@@ -51,19 +54,21 @@ export async function runSuite(loadedConfig: LoadedConfig, options: RunSuiteOpti
   }
 
   const passed = cases.filter((testCase) => testCase.passed).length;
-  const identity = targetConfig.kind === "prompt" ? prompt! : JSON.stringify({ instructions: instructions ?? null, tools: targetConfig.tools, command: targetConfig.command });
+  const identity = targetConfig.kind === "prompt" ? prompt! : targetConfig.kind === "agent"
+    ? JSON.stringify({ instructions: instructions ?? null, tools: targetConfig.tools, command: targetConfig.command })
+    : JSON.stringify(targetConfig);
   const artifactRoot = options.artifactRoot ?? process.cwd();
   const artifact: RunArtifact = {
     schemaVersion: 1,
     runId: createRunId(), project: config.project, createdAt: new Date().toISOString(),
     provenance: await collectProvenance({ cwd: loadedConfig.rootDir, configPath: loadedConfig.path, artifactRoot }),
-    provider: targetConfig.kind === "prompt" ? { type: config.provider.type, model: providerConfig?.model, temperature: providerConfig?.temperature } : { type: "command" },
+    provider: targetConfig.kind === "prompt" ? { type: providerConfig!.type, model: providerConfig?.model, temperature: providerConfig?.temperature } : { type: targetConfig.kind === "agent" ? "command" : "http" },
     target: {
       kind: targetConfig.kind, label: targetLabel,
-      path: toPortablePath(path.relative(options.artifactRoot ?? process.cwd(), (promptPath ?? instructionsPath) || loadedConfig.path)),
+      path: targetConfig.kind === "http" ? targetConfig.url : toPortablePath(path.relative(options.artifactRoot ?? process.cwd(), (promptPath ?? instructionsPath) || loadedConfig.path)),
       sha256: sha256(identity),
-      tools: targetConfig.kind === "agent" ? targetConfig.tools.map((tool) => tool.name) : undefined,
-      toolDecls: targetConfig.kind === "agent" ? targetConfig.tools : undefined,
+      tools: targetConfig.kind !== "prompt" ? targetConfig.tools.map((tool) => tool.name) : undefined,
+      toolDecls: targetConfig.kind !== "prompt" ? targetConfig.tools : undefined,
       command: targetConfig.kind === "agent" ? targetConfig.command : undefined
     },
     summary: { total: cases.length, passed, failed: cases.length - passed }, cases

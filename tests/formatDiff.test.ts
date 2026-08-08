@@ -87,3 +87,14 @@ describe("ungatedToolHint", () => {
     expect(ungatedToolHint({ toolChanges: [], violationChanges: [] }, {})).toBeUndefined();
   });
 });
+
+describe("formatDiff model path", () => {
+  it("shows model substitutions above output evidence", () => {
+    const left = agentArtifact("left-model", "baseline", [{ id: "route", passed: true, output: "same", trace: [{ type: "model", provider: "openrouter", model: "model/a" }] }]);
+    const right = agentArtifact("right-model", "candidate", [{ id: "route", passed: true, output: "same", trace: [{ type: "model", provider: "openrouter", model: "model/b" }] }]);
+    const text = formatDiff(diffRuns(left, right));
+    expect(text).toContain("Model path changes");
+    expect(text).toContain("openrouter/model/a");
+    expect(text).toContain("openrouter/model/b");
+  });
+});

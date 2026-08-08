@@ -18,6 +18,8 @@ export type AgentCommandOutput = {
 const traceStepSchema = z.object({
   type: z.enum(["model", "tool", "final"]),
   name: z.string().optional(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
   input: z.unknown().optional(),
   output: z.unknown().optional()
 });
@@ -83,7 +85,7 @@ export async function runAgentCommand(options: {
   });
 }
 
-function parseTrace(raw: unknown[]): { steps: AgentTraceStep[]; indices: number[]; malformed: MalformedStep[] } {
+export function parseTrace(raw: unknown[]): { steps: AgentTraceStep[]; indices: number[]; malformed: MalformedStep[] } {
   const steps: AgentTraceStep[] = [];
   const indices: number[] = [];
   const malformed: MalformedStep[] = [];

@@ -80,6 +80,10 @@ export const toolDeclarationSchema = z.preprocess(
     effect: z.enum(["read", "write", "external"]).optional()
   })
 );
+const toolsSchema = z.array(toolDeclarationSchema).default([])
+  .refine((tools) => new Set(tools.map((tool) => tool.name)).size === tools.length, {
+    message: "duplicate tool names are not allowed"
+  });
 
 const targetSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -91,10 +95,21 @@ const targetSchema = z.discriminatedUnion("kind", [
     kind: z.literal("agent"),
     command: z.array(z.string().min(1)).min(1),
     instructions: z.string().min(1).optional(),
-    tools: z.array(toolDeclarationSchema).default([])
-      .refine((tools) => new Set(tools.map((tool) => tool.name)).size === tools.length, {
-        message: "duplicate tool names are not allowed"
-      }),
+    tools: toolsSchema,
+    timeout_ms: z.number().int().positive().default(30_000)
+  }),
+  z.object({
+    kind: z.literal("http"),
+    url: z.string().min(1),
+    method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).default("POST"),
+    headers: z.record(z.string(), z.string()).default({}),
+    body: z.unknown().optional(),
+    response: z.object({
+      output_path: z.string().default("output"),
+      trace_path: z.string().optional(),
+      usage_path: z.string().optional()
+    }).default({ output_path: "output" }),
+    tools: toolsSchema,
     timeout_ms: z.number().int().positive().default(30_000)
   })
 ]);
